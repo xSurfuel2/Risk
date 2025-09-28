@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RISK Medieval — Mapa Interactivo</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+body, html { margin:0; height:100%; font-family:Arial, sans-serif; }
+#map { height: 100%; }
+#sidebar{
+  position:fixed; top:10px; left:10px; width:300px; max-height:95%; background:rgba(0,0,0,0.6);
+  padding:10px; border-radius:8px; color:#fff; overflow:auto; z-index:1000;
+}
+.player-item{ padding:6px; margin:4px 0; border-radius:6px; display:flex; justify-content:space-between; align-items:center; }
+.player-color{ width:18px; height:18px; border-radius:50%; margin-right:6px; display:inline-block; }
+.player-item.current{ box-shadow: inset 0 0 0 2px #caa43b; }
+.controls{ margin:6px 0; }
+.controls button{ margin:4px; padding:6px 12px; border:none; border-radius:5px; cursor:pointer; background:#444; color:#caa43b; }
+#log{ margin-top:10px; max-height:250px; overflow:auto; background:rgba(0,0,0,0.3); padding:6px; font-size:12px; border-radius:6px;}
+#action-modal, #action-qty-modal{
+  display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  background:rgba(20,20,20,0.95); padding:16px; border-radius:10px; z-index:2000;
+  color:#caa43b; width:280px;
+}
+#action-qty-modal input{ width:100%; margin-bottom:8px; }
+#action-qty-modal button{ display:block; margin:6px 0; width:100%; }
+.territory-label div{
+  background: rgba(0,0,0,0.6);
+  padding:2px 4px; border-radius:4px;
+  display:inline-block;
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="sidebar">
+  <h3>Jugadores</h3>
+  <div id="players-list"></div>
+  <div class="controls">
+    <button id="btn-recruit">Reclutar (100$)</button>
+    <button id="btn-pass">Pasar turno</button>
+  </div>
+  <h4>Registro de acciones</h4>
+  <div id="log"></div>
+</div>
+
+<!-- Modal de acción -->
+<div id="action-modal">
+  <p id="modal-text">¿Qué deseas hacer?</p>
+  <button id="btn-action-attack">Atacar</button>
+  <button id="btn-action-move">Mover tropas</button>
+  <button id="btn-action-cancel">Cancelar</button>
+</div>
+
+<!-- Modal cantidad -->
+<div id="action-qty-modal">
+  <p id="modal-qty-text">Cantidad de tropas</p>
+  <input type="number" id="modal-number" min="1">
+  <button id="modal-qty-confirm">Confirmar</button>
+  <button id="modal-qty-cancel">Cancelar</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// Configuración
+const NUM_FACTIONS = 5;
+const PLAYER_ID = 0;
+const START_MONEY = 100;
+const RECRUIT_COST = 100;
+const INCOME_PER_TERR = 50;
+const colors = ['green','red','blue','orange','purple'];
+let current = 0;
+let selected = null;
+let target = null;
+let actionMode = null;
+
+// Territorios simplificados para ejemplo
+const territories = [
+  {id:0,name:'Alaska',lat:64.2,lng:-149,owner:null,troops:0,moved:false,neighbors:[1,18]},
+  {id:1,name:'Canada',lat:60,lng:-100,owner:null,troops:0,moved:false,neighbors:[0,2,18,19]},
+  {id:2,name:'USA',lat:38,lng:-97,owner:null,troops:0,moved:false,neighbors:[1,3,4]},
+  {id:3,name:'Mexico',lat:23,lng:-102,owner:null,troops:0,moved:false,neighbors:[2,4]},
+  {id:4,name:'Brasil',lat:-10,lng:-55,owner:null,troops:0,moved:false,neighbors:[2,3,5]},
+  {id:5,name:'Argentina',lat:-34,lng:-64,owner:null,troops:0,moved:false,neighbors:[4]},
+  {id:6,name:'UK',lat:55,lng:-3,owner:null,troops:0,moved:false,neighbors:[7,8,19]},
+  {id:7,name:'France',lat:46,lng:2,owner:null,troops:0,moved:false,neighbors:[6,8,9]},
+  {id:8,name:'Germany',lat:51,lng:10,owner:null,troops:0,moved:false,neighbors:[6,7,9]},
+  {id:9,name:'Italy',lat:42,lng:12,owner:null,troops:0,moved:false,neighbors:[7,8,10]},
+  {id:10,name:'Egypt',lat:26,lng:31,owner:null,troops:0,moved:false,neighbors:[9,11]},
+  {id:11,name:'South Africa',lat:-30,lng:25,owner:null,troops:0,moved:false,neighbors:[10]},
+  {id:12,name:'Russia',lat:60,lng:90,owner:null,troops:0,moved:false,neighbors:[13]},
+  {id:13,name:'China',lat:35,lng:104,owner:null,troops:0,moved:false,neighbors:[12,14,15]},
+  {id:14,name:'India',lat:21,lng:78,owner:null,troops:0,moved:false,neighbors:[13]},
+  {id:15,name:'Japan',lat:36,lng:138,owner:null,troops:0,moved:false,neighbors:[13]},
+  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:0,moved:false,neighbors:[17]},
+  {id:17,name:'New Zealand',lat:-41,lng:174,owner:null,troops:0,moved:false,neighbors:[16]},
+  {id:18,name:'Greenland',lat:72,lng:-40,owner:null,troops:0,moved:false,neighbors:[0,1]},
+  {id:19,name:'Iceland',lat:65,lng:-18,owner:null,troops:0,moved:false,neighbors:[1,6]}
+];
+
+// --- Jugadores ---
+const players = [];
+for(let i=0;i<NUM_FACTIONS;i++){
+  players.push({id:i,name:i===PLAYER_ID?'Humano':'IA '+i,money:START_MONEY,isAI:i!==PLAYER_ID});
+}
+
+// --- Mapa Leaflet ---
+const map = L.map('map').setView([20,0],2);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:5}).addTo(map);
+
+// --- Asignar territorios iniciales ---
+let available = [...Array(territories.length).keys()];
+for(let p=0;p<NUM_FACTIONS;p++){
+  let idx = available.splice(Math.floor(Math.random()*available.length),1)[0];
+  territories[idx].owner = p;
+  territories[idx].troops = 1;
+}
+
+// --- Crear markers y labels debajo ---
+territories.forEach(t=>{
+  t.marker = L.circleMarker([t.lat,t.lng],{
+    radius:20,
+    color:'black',
+    fillColor:t.owner!==null?colors[t.owner]:'#555',
+    fillOpacity:0.8,
+    weight:2
+  }).addTo(map);
+  t.label = L.marker([t.lat,t.lng+2],{
+    icon:L.divIcon({
+      className:'territory-label',
+      html:`<div style="color:#fff;text-align:center;font-size:12px"><div>${t.name}<br>${t.troops}</div></div>`
+    })
+  }).addTo(map);
+  t.marker.on('click',()=>selectTerritory(t));
+});
+
+// --- Actualizar labels y colores ---
+function refreshMarkers(){
+  territories.forEach(t=>{
+    t.marker.setStyle({
+      fillColor:t.owner!==null?colors[t.owner]:'#555',
+      opacity:t.moved?0.5:1,
+      weight:(selected&&t.id===selected.id)?3:2,
+      color:(selected&&t.id===selected.id)?'red':'black'
+    });
+    t.label.setIcon(L.divIcon({
+      className:'territory-label',
+      html:`<div style="color:#fff;text-align:center;font-size:12px"><div>${t.name}<br>${t.troops}</div></div>`
+    }));
+  });
+  if(selected){
+    selected.neighbors.forEach(nid=>{
+      const n = territories.find(ter => ter.id === nid);
+      if(n && !n.moved){
+        n.marker.setStyle({color:'green', weight:3});
+      }
+    });
+  }
+  renderPlayers();
+}
+
+// --- Render jugadores ---
+const playersEl = document.getElementById('players-list');
+function renderPlayers(){
+  playersEl.innerHTML='';
+  players.forEach(p=>{
+    const div = document.createElement('div');
+    div.className='player-item'+(p.id===current?' current':'');
+    div.innerHTML = `<div><span class="player-color" style="background:${colors[p.id]}"></span>${p.name}</div><div>$${p.money}</div>`;
+    playersEl.appendChild(div);
+  });
+}
+
+// --- Log ---
+const logDiv = document.getElementById('log');
+function addLog(text){ const p=document.createElement('div'); p.textContent=text; logDiv.prepend(p); }
+
+// --- Seleccionar territorio ---
+function selectTerritory(t){
+  if(t.owner!==current || t.moved || t.troops<1){ selected=null; target=null; actionMode=null; refreshMarkers(); return; }
+  selected = t;
+  highlightNeighbors(t);
+  showActionModal();
+  refreshMarkers();
+}
+
+// --- Resaltar vecinos ---
+function highlightNeighbors(t){
+  territories.forEach(n=>{
+    if(t.neighbors.includes(n.id) && !n.moved){
+      n.marker.setStyle({color:'green',weight:3});
+    }
+  });
+}
+
+// --- Modal acción ---
+const actionModal = document.getElementById('action-modal');
+function showActionModal(){ actionModal.style.display='block'; }
+document.getElementById('btn-action-cancel').onclick=()=>{ selected=null; actionModal.style.display='none'; refreshMarkers(); };
+document.getElementById('btn-action-attack').onclick=()=>{ actionMode='attack'; actionModal.style.display='none'; selectTarget(); };
+document.getElementById('btn-action-move').onclick=()=>{ actionMode='move'; actionModal.style.display='none'; selectTarget(); };
+
+// --- Seleccionar destino ---
+function selectTarget(){
+  territories.forEach(t=>{
+    t.marker.off('click');
+    t.marker.on('click',()=>{
+      if(t.id === selected.id){
+        selected=null; target=null; actionMode=null;
+        qtyModal.style.display='none';
+        resetClickHandlers();
+        refreshMarkers();
+        return;
+      }
+      if(selected.neighbors.includes(t.id)){
+        if(actionMode === 'attack' && t.owner === current){
+          alert('No puedes atacar tu propio territorio');
+          return;
+        }
+        if(actionMode === 'move' && t.owner !== current){
+          alert('No puedes mover tropas a un territorio enemigo');
+          return;
+        }
+        target = t;
+        t.marker.setStyle({color:'red',weight:3});
+        showQuantityModal();
+      }
+    });
+  });
+}
+
+// --- Modal cantidad ---
+const qtyModal = document.getElementById('action-qty-modal');
+function showQuantityModal(){
+  const maxT = selected.troops-1;
+  const input = document.getElementById('modal-number');
+  input.max = maxT;
+  input.value = Math.min(1,maxT);
+  document.getElementById('modal-qty-text').textContent=`Cantidad (máx ${maxT})`;
+  qtyModal.style.display='block';
+}
+document.getElementById('modal-qty-cancel').onclick=()=>{
+  qtyModal.style.display='none';
+  selected=null; target=null; actionMode=null; refreshMarkers();
+  resetClickHandlers();
+};
+document.getElementById('modal-qty-confirm').onclick=()=>{
+  const qty = parseInt(document.getElementById('modal-number').value);
+  if(actionMode==='move') moveTroops(selected,target,qty);
+  else if(actionMode==='attack') battle(selected,target,qty);
+  qtyModal.style.display='none';
+  selected=null; target=null; actionMode=null; refreshMarkers();
+  resetClickHandlers();
+};
+
+// --- Funciones mover y atacar ---
+function moveTroops(from,to,qty){
+  from.troops-=qty; to.troops+=qty; from.moved=true;
+  addLog(`${players[current].name} mueve ${qty} tropas de ${from.name} a ${to.name}`);
+  refreshMarkers();
+}
+
+function battle(attacker,defender,qty){
+  const atkDice = Array.from({length:qty},()=>Math.floor(Math.random()*6)+1).sort((a,b)=>b-a);
+  const defDice = Array.from({length:defender.troops},()=>Math.floor(Math.random()*6)+1).sort((a,b)=>b-a);
+  let atkLoss=0,defLoss=0;
+  for(let i=0;i<Math.min(atkDice.length,defDice.length);i++){
+    if(atkDice[i]>defDice[i]) defLoss++; else atkLoss++;
+  }
+  attacker.troops-=qty; // Restar las tropas enviadas a atacar
+  defender.troops-=defLoss;
+  let resultText=`Ataca ${attacker.name} -> ${defender.name}\nAtacante pierde ${atkLoss}, Defensor pierde ${defLoss}\n`;
+  if(defender.troops<=0 && (qty-atkLoss)>0){
+    defender.owner=current; defender.troops=qty-atkLoss; attacker.moved=true;
+    alert(`${players[current].name} conquistó ${defender.name}!`);
+    resultText+=`${players[current].name} conquistó ${defender.name}!`;
+  }
+  alert(resultText);
+  addLog(resultText);
+  refreshMarkers();
+}
+
+// --- Botones principales ---
+document.getElementById('btn-recruit').onclick=()=>{
+  if(players[current].money<RECRUIT_COST){ alert('No hay dinero'); return;}
+  alert('Selecciona un territorio para reclutar');
+  territories.forEach(t=>{
+    t.marker.off('click');
+    t.marker.on('click',()=>{
+      if(t.owner===current){
+        t.troops++; players[current].money-=RECRUIT_COST;
+        addLog(`${players[current].name} reclutó 1 tropa en ${t.name}`);
+        resetClickHandlers();
+        refreshMarkers();
+      }
+    });
+  });
+};
+
+document.getElementById('btn-pass').onclick=()=>{
+  const income = territories.filter(t=>t.owner===current).length*INCOME_PER_TERR;
+  players[current].money+=income;
+  territories.filter(t=>t.owner===current).forEach(t=>t.moved=false);
+  addLog(`${players[current].name} termina turno. Recibió $${income}`);
+  current=(current+1)%NUM_FACTIONS;
+  refreshMarkers();
+  if(players[current].isAI) runAI(players[current]);
+};
+
+// --- IA avanzada ---
+function runAI(p){
+  // deshabilitar la UI del jugador humano mientras actúa la IA
+  document.getElementById('btn-recruit').disabled = true;
+  document.getElementById('btn-pass').disabled = true;
+
+  const myTerrs = territories.filter(t => t.owner === p.id && !t.moved);
+  let delay = 0;
+
+  function nextAction(index){
+    if(index >= myTerrs.length){
+      // turno IA finalizado: desbloquear jugador siguiente
+      const income = territories.filter(t=>t.owner===p.id).length*INCOME_PER_TERR;
+      p.money+=income;
+      territories.filter(t=>t.owner===p.id).forEach(t=>t.moved=false);
+      addLog(`${p.name} termina turno. Recibió $${income}`);
+      current = (current + 1) % NUM_FACTIONS;
+      refreshMarkers();
+      if(!players[current].isAI){
+        document.getElementById('btn-recruit').disabled = false;
+        document.getElementById('btn-pass').disabled = false;
+      } else {
+        runAI(players[current]);
+      }
+      return;
+    }
+
+    const t = myTerrs[index];
+    setTimeout(()=>{
+      // Reclutar si hay dinero
+      if(p.money >= RECRUIT_COST){ 
+        t.troops++; 
+        p.money -= RECRUIT_COST; 
+        addLog(`${p.name} recluta 1 tropa en ${t.name}`);
+      }
+      // Atacar vecinos enemigos
+      t.neighbors.forEach(nid=>{
+        const n = territories[nid];
+        if(n.owner!==p.id && t.troops>1){
+          battle(t, n, Math.min(3, t.troops-1));
+        }
+      });
+      t.moved = true;
+      refreshMarkers();
+      nextAction(index+1); // siguiente territorio
+    }, delay);
+    delay = 1000 + Math.random()*500;
+  }
+
+  nextAction(0);
+}
+
+// --- Resetear handlers de click ---
+function resetClickHandlers(){
+  territories.forEach(t=>{
+    t.marker.off('click');
+    t.marker.on('click',()=>selectTerritory(t));
+  });
+}
+
+refreshMarkers();
+</script>
+</body>
+</html>

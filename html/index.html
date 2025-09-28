@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RISK Medieval — Inicio</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --accent: #caa43b;
+      --bg-dark: rgba(6,6,6,0.45);
+    }
+    html,body{
+      height:100%;
+      margin:0;
+      font-family: 'Cinzel', serif;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+    body{
+      background-image: url("images/medieval-map.jpg");
+      background-size: cover;
+      background-position: center center;
+      background-repeat: no-repeat;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color: #fff;
+    }
+    .overlay{
+      position: absolute;
+      inset:0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.6));
+      mix-blend-mode: multiply;
+      pointer-events:none;
+    }
+    .card{
+      position:relative;
+      z-index:2;
+      width:min(920px, 92%);
+      max-width:1100px;
+      padding: 36px 40px;
+      border-radius:12px;
+      background: linear-gradient(180deg, rgba(10,10,10,0.25), rgba(10,10,10,0.12));
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+      backdrop-filter: blur(3px) saturate(120%);
+      display:flex;
+      gap:24px;
+      align-items:center;
+      flex-direction:column;
+      text-align:center;
+    }
+    h1{
+      margin:0 0 8px 0;
+      font-size: clamp(26px, 4vw, 44px);
+      letter-spacing: 1px;
+      text-transform:uppercase;
+      color:var(--accent);
+      text-shadow: 0 2px 0 rgba(0,0,0,0.6);
+    }
+    p.lead{
+      margin:0 0 20px 0;
+      opacity:0.95;
+      color:#efe9d6;
+    }
+    button#start-btn{
+      appearance:none;
+      border:2px solid rgba(202,164,59,0.95);
+      background: linear-gradient(180deg, rgba(202,164,59,0.15), rgba(0,0,0,0.18));
+      color: var(--accent);
+      padding:14px 22px;
+      font-size:16px;
+      border-radius:10px;
+      cursor:pointer;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+      transition: transform .12s ease, box-shadow .12s ease;
+      margin: 0 auto;
+      display: block;
+    }
+    button#start-btn:active{ transform: translateY(1px) scale(.998); }
+    button#start-btn:hover{ box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+    .logo{
+      font-size:64px;
+      line-height:1;
+      filter: drop-shadow(0 6px 8px rgba(0,0,0,0.6));
+      margin-top:20px;
+    }
+    .subtle{
+      font-size:13px;
+      opacity:0.9;
+      margin-top:8px;
+      color:#e9dfc6;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay" aria-hidden="true"></div>
+  <main class="card" role="main">
+    <h1>RISK — Edad Media</h1>
+    <p class="lead">Conquista territorios, forja alianzas y domina el reino. ¿Estás listo para la guerra estratégica en un mundo medieval?</p>
+    <button id="start-btn" aria-label="Iniciar partida">Iniciar partida</button>
+    <div class="logo" aria-hidden="true">🛡️</div>
+    <div class="subtle">Versión inicial • Personaliza el mapa y las reglas</div>
+  </main>
+
+  <script>
+    document.getElementById('start-btn').addEventListener('click', function(){
+      window.location.href = 'map.html';
+    });
+  </script>
+</body>
+</html>
