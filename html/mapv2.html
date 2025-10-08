@@ -1,0 +1,1882 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RISK Medieval — Edición Épica</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap');
+
+body, html { 
+  margin:0; 
+  height:100%; 
+  font-family: 'MedievalSharp', Arial, sans-serif; 
+  overflow: hidden;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+#map { 
+  height: 100%; 
+  filter: brightness(0.9) contrast(1.1);
+}
+
+/* Partículas de fondo */
+.particle {
+  position: fixed;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 9999;
+}
+
+/* Clima */
+#weather-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 500;
+}
+
+.rain-drop {
+  position: absolute;
+  width: 2px;
+  height: 20px;
+  background: linear-gradient(transparent, rgba(174, 194, 224, 0.6));
+  animation: fall linear infinite;
+}
+
+@keyframes fall {
+  to { transform: translateY(100vh); }
+}
+
+.snow-flake {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: white;
+  border-radius: 50%;
+  animation: snowfall linear infinite;
+}
+
+@keyframes snowfall {
+  to { transform: translateY(100vh) rotate(360deg); }
+}
+
+#sidebar {
+  position: fixed; 
+  top: 10px; 
+  left: 10px; 
+  width: 380px; 
+  max-height: 95%; 
+  background: linear-gradient(145deg, rgba(20,20,40,0.95), rgba(40,20,20,0.95));
+  padding: 15px; 
+  border-radius: 12px; 
+  color: #fff; 
+  overflow: auto; 
+  z-index: 1000;
+  box-shadow: 0 8px 32px rgba(202, 164, 59, 0.3);
+  border: 2px solid rgba(202, 164, 59, 0.5);
+}
+
+#sidebar::-webkit-scrollbar { width: 8px; }
+#sidebar::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); border-radius: 10px; }
+#sidebar::-webkit-scrollbar-thumb { background: #caa43b; border-radius: 10px; }
+
+.player-item { 
+  padding: 10px; 
+  margin: 6px 0; 
+  border-radius: 8px; 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center;
+  background: rgba(0,0,0,0.3);
+  transition: all 0.3s;
+}
+
+.player-item:hover {
+  transform: translateX(5px);
+  background: rgba(202, 164, 59, 0.2);
+}
+
+.player-color { 
+  width: 24px; 
+  height: 24px; 
+  border-radius: 50%; 
+  margin-right: 10px; 
+  display: inline-block;
+  box-shadow: 0 0 10px currentColor;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.player-item.current { 
+  box-shadow: inset 0 0 0 3px #caa43b;
+  background: rgba(202, 164, 59, 0.3);
+  animation: glow 1.5s infinite;
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: inset 0 0 0 3px #caa43b, 0 0 20px rgba(202, 164, 59, 0.5); }
+  50% { box-shadow: inset 0 0 0 3px #caa43b, 0 0 30px rgba(202, 164, 59, 0.8); }
+}
+
+.controls { 
+  margin: 12px 0; 
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.controls button { 
+  padding: 10px 16px; 
+  border: none; 
+  border-radius: 8px; 
+  cursor: pointer; 
+  background: linear-gradient(145deg, #444, #222);
+  color: #caa43b; 
+  transition: all 0.3s;
+  font-family: inherit;
+  font-weight: bold;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.controls button:hover { 
+  background: linear-gradient(145deg, #666, #444);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(202, 164, 59, 0.4);
+}
+
+.controls button:active {
+  transform: translateY(0);
+}
+
+.controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#log { 
+  margin-top: 12px; 
+  max-height: 200px; 
+  overflow: auto; 
+  background: rgba(0,0,0,0.4); 
+  padding: 10px; 
+  font-size: 11px; 
+  border-radius: 8px;
+  border: 1px solid rgba(202, 164, 59, 0.3);
+}
+
+#log div {
+  padding: 4px;
+  margin: 2px 0;
+  border-left: 3px solid #caa43b;
+  padding-left: 8px;
+  animation: slideIn 0.3s;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(-20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Modales mejorados */
+.modal {
+  display: none; 
+  position: fixed; 
+  top: 50%; 
+  left: 50%; 
+  transform: translate(-50%,-50%);
+  background: linear-gradient(145deg, rgba(20,20,40,0.98), rgba(40,20,20,0.98));
+  padding: 25px; 
+  border-radius: 16px; 
+  z-index: 2000;
+  color: #caa43b; 
+  width: 400px; 
+  text-align: center; 
+  box-shadow: 0 0 40px rgba(202,164,59,0.6), inset 0 0 20px rgba(202,164,59,0.1);
+  border: 3px solid rgba(202, 164, 59, 0.8);
+  animation: modalPop 0.3s;
+}
+
+@keyframes modalPop {
+  from { transform: translate(-50%,-50%) scale(0.8); opacity: 0; }
+  to { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+}
+
+.modal h3 {
+  margin-top: 0;
+  font-size: 24px;
+  text-shadow: 0 0 10px rgba(202,164,59,0.8);
+}
+
+.modal input { 
+  width: 90%; 
+  margin: 10px 0; 
+  padding: 10px; 
+  background: rgba(0,0,0,0.5); 
+  color: #fff; 
+  border: 2px solid #caa43b;
+  border-radius: 8px;
+  font-family: inherit;
+}
+
+.modal button { 
+  display: block; 
+  margin: 10px auto; 
+  width: 85%; 
+  padding: 12px; 
+  background: linear-gradient(145deg, #444, #222);
+  color: #caa43b; 
+  border: 2px solid #caa43b; 
+  border-radius: 8px; 
+  cursor: pointer; 
+  transition: all 0.3s;
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.modal button:hover { 
+  background: linear-gradient(145deg, #666, #444);
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(202,164,59,0.5);
+}
+
+/* Arena de batalla mejorada */
+#battle-arena { 
+  margin: 20px 0; 
+  height: 300px; 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center;
+  background: linear-gradient(90deg, rgba(139,0,0,0.3) 0%, rgba(0,0,0,0.5) 50%, rgba(0,100,0,0.3) 100%);
+  border-radius: 12px;
+  padding: 15px;
+  position: relative;
+  overflow: hidden;
+}
+
+#battle-arena::before {
+  content: '⚔';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 80px;
+  opacity: 0.1;
+  animation: rotate 4s linear infinite;
+}
+
+@keyframes rotate {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.battle-side { 
+  width: 45%; 
+  text-align: center;
+  z-index: 1;
+}
+
+#battle-rank { 
+  font-size: 20px; 
+  margin: 15px 0; 
+  font-weight: bold;
+  text-shadow: 0 0 10px currentColor;
+  animation: rankPulse 1s infinite;
+}
+
+@keyframes rankPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.battle-unit { 
+  display: inline-block; 
+  margin: 5px; 
+  width: 50px; 
+  height: 50px; 
+  background-size: contain; 
+  background-repeat: no-repeat; 
+  background-position: center; 
+  transition: all 0.5s;
+  filter: drop-shadow(0 0 5px rgba(202,164,59,0.8));
+  animation: unitIdle 2s infinite;
+}
+
+@keyframes unitIdle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.battle-unit.attacking {
+  animation: attack 0.6s;
+}
+
+@keyframes attack {
+  0% { transform: translateX(0) rotate(0deg); }
+  50% { transform: translateX(30px) rotate(20deg) scale(1.2); }
+  100% { transform: translateX(0) rotate(0deg); }
+}
+
+.battle-unit.defending {
+  animation: defend 0.6s;
+}
+
+@keyframes defend {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.8) translateY(5px); }
+}
+
+.battle-unit.defeated { 
+  transform: scale(0) rotate(180deg); 
+  opacity: 0;
+  filter: grayscale(1) blur(2px);
+}
+
+/* Sprites de unidades mejorados */
+.infantry { 
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23caa43b"><circle cx="12" cy="6" r="2"/><path d="M12 9c-3 0-5 2-5 5v8h2v-6h6v6h2v-8c0-3-2-5-5-5z"/><path d="M8 11l-2 4M16 11l2 4"/></svg>'); 
+}
+
+.cavalry { 
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23caa43b"><path d="M20 8c0-2-1-3-2-3s-2 1-2 3v6l-4 2-4-2V8c0-2-1-3-2-3S4 6 4 8v10h2v-6l4 2v6h4v-6l4-2v6h2V8z"/><circle cx="12" cy="4" r="2"/></svg>'); 
+}
+
+.archer { 
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23caa43b"><circle cx="12" cy="5" r="2"/><path d="M12 8c-2 0-3 1-3 3v9h2v-5h2v5h2v-9c0-2-1-3-3-3z"/><path d="M4 6l8 6m0-6l8 6M12 12v-4"/></svg>'); 
+}
+
+.siege { 
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23caa43b"><rect x="6" y="4" width="12" height="16" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M8 2h8M8 22h8M4 12h4m8 0h4"/></svg>'); 
+}
+
+/* Dados 3D mejorados */
+.dice-container { 
+  margin: 15px 0; 
+  display: flex; 
+  justify-content: center; 
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dice { 
+  width: 50px; 
+  height: 50px; 
+  perspective: 1000px; 
+  display: inline-block;
+}
+
+.dice-inner { 
+  position: relative; 
+  width: 100%; 
+  height: 100%; 
+  transition: transform 1s; 
+  transform-style: preserve-3d; 
+  background: linear-gradient(145deg, #8b0000, #660000);
+  border: 3px solid #caa43b; 
+  border-radius: 10px;
+  box-shadow: 0 0 20px rgba(139,0,0,0.8), inset 0 0 10px rgba(0,0,0,0.5);
+}
+
+.dice-face { 
+  position: absolute; 
+  width: 100%; 
+  height: 100%; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  background: linear-gradient(145deg, #8b0000, #660000);
+  border: 2px solid #caa43b; 
+  border-radius: 8px;
+  font-size: 24px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 10px #caa43b;
+}
+
+.dice.rolling .dice-inner { 
+  animation: diceRoll 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55); 
+}
+
+@keyframes diceRoll { 
+  0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+  25% { transform: rotateX(180deg) rotateY(180deg) rotateZ(90deg); }
+  50% { transform: rotateX(360deg) rotateY(360deg) rotateZ(180deg); }
+  75% { transform: rotateX(540deg) rotateY(540deg) rotateZ(270deg); }
+  100% { transform: rotateX(720deg) rotateY(720deg) rotateZ(360deg); }
+}
+
+/* Efectos de partículas */
+.blood-particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #8b0000;
+  border-radius: 50%;
+  animation: bloodSplatter 0.8s forwards;
+}
+
+@keyframes bloodSplatter {
+  to {
+    transform: translate(var(--x), var(--y)) scale(0);
+    opacity: 0;
+  }
+}
+
+.spark-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #ffd700;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #ffd700;
+  animation: sparkFly 0.6s forwards;
+}
+
+@keyframes sparkFly {
+  to {
+    transform: translate(var(--x), var(--y)) scale(0);
+    opacity: 0;
+  }
+}
+
+/* Panel de héroe */
+#hero-panel {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  width: 380px;
+  background: linear-gradient(145deg, rgba(20,20,40,0.95), rgba(40,20,20,0.95));
+  padding: 15px;
+  border-radius: 12px;
+  color: #caa43b;
+  z-index: 1000;
+  box-shadow: 0 8px 32px rgba(202, 164, 59, 0.3);
+  border: 2px solid rgba(202, 164, 59, 0.5);
+}
+
+.hero-ability {
+  margin: 8px 0;
+  padding: 10px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 8px;
+  border-left: 4px solid #caa43b;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.hero-ability:hover {
+  background: rgba(202, 164, 59, 0.2);
+  transform: translateX(5px);
+}
+
+.hero-ability.cooldown {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Panel de eventos */
+#event-notification {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  background: linear-gradient(145deg, rgba(139,0,0,0.98), rgba(0,0,0,0.98));
+  padding: 30px;
+  border-radius: 16px;
+  z-index: 3000;
+  color: #fff;
+  width: 500px;
+  text-align: center;
+  box-shadow: 0 0 60px rgba(255,0,0,0.8);
+  border: 4px solid #ff0000;
+}
+
+#event-notification.show {
+  animation: eventPop 0.5s forwards;
+}
+
+@keyframes eventPop {
+  to { transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Achievements */
+#achievements {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  width: 300px;
+  max-height: 400px;
+  overflow: auto;
+  background: linear-gradient(145deg, rgba(20,20,40,0.95), rgba(20,40,20,0.95));
+  padding: 15px;
+  border-radius: 12px;
+  z-index: 1000;
+  box-shadow: 0 8px 32px rgba(0, 255, 0, 0.3);
+  border: 2px solid rgba(0, 255, 0, 0.5);
+}
+
+.achievement {
+  padding: 10px;
+  margin: 8px 0;
+  background: rgba(0,0,0,0.4);
+  border-radius: 8px;
+  border-left: 4px solid #00ff00;
+  opacity: 0.5;
+  transition: all 0.3s;
+}
+
+.achievement.unlocked {
+  opacity: 1;
+  animation: achievementUnlock 0.6s;
+}
+
+@keyframes achievementUnlock {
+  0% { transform: scale(0.8); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+/* Mini mapa */
+#minimap {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  width: 200px;
+  height: 150px;
+  background: rgba(0,0,0,0.8);
+  border: 2px solid #caa43b;
+  border-radius: 8px;
+  z-index: 1000;
+}
+
+.territory-label div {
+  background: rgba(0,0,0,0.8); 
+  padding: 6px 8px; 
+  border-radius: 6px; 
+  display: inline-block; 
+  font-size: 11px;
+  border: 1px solid rgba(202,164,59,0.5);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+/* Tutorial */
+#tutorial {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.9);
+  z-index: 5000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+#tutorial.show {
+  display: flex;
+}
+
+.tutorial-content {
+  background: linear-gradient(145deg, rgba(20,20,40,0.98), rgba(40,20,20,0.98));
+  padding: 40px;
+  border-radius: 16px;
+  max-width: 600px;
+  color: #caa43b;
+  text-align: center;
+  border: 3px solid #caa43b;
+  box-shadow: 0 0 40px rgba(202,164,59,0.6);
+}
+
+.tutorial-content h2 {
+  font-size: 32px;
+  margin-bottom: 20px;
+  text-shadow: 0 0 20px rgba(202,164,59,0.8);
+}
+
+.tutorial-content button {
+  padding: 15px 30px;
+  font-size: 18px;
+  margin-top: 20px;
+  background: linear-gradient(145deg, #444, #222);
+  color: #caa43b;
+  border: 2px solid #caa43b;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-family: inherit;
+}
+
+.tutorial-content button:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 30px rgba(202,164,59,0.8);
+}
+</style>
+</head>
+<body>
+<div id="weather-overlay"></div>
+<div id="map"></div>
+
+<div id="sidebar">
+  <h3 style="text-align:center; text-shadow: 0 0 10px #caa43b;">⚔ RISK Medieval ⚔</h3>
+  <div id="weather-info" style="text-align:center; font-size:12px; margin-bottom:10px;"></div>
+  <h4>Jugadores</h4>
+  <div id="players-list"></div>
+  <div class="controls">
+    <button id="btn-recruit">🗡 Reclutar</button>
+    <button id="btn-fortify">🛡 Fortificar</button>
+    <button id="btn-hero">⭐ Héroe</button>
+    <button id="btn-pass">➡ Pasar turno</button>
+  </div>
+  <h4>📜 Registro</h4>
+  <div id="log"></div>
+</div>
+
+<div id="hero-panel">
+  <h4 style="margin-top:0;">🦸 Tu Héroe</h4>
+  <div id="hero-abilities"></div>
+</div>
+
+<div id="achievements">
+  <h4 style="margin-top:0;">🏆 Logros</h4>
+  <div id="achievements-list"></div>
+</div>
+
+<div id="minimap"></div>
+
+<!-- Modales -->
+<div id="action-modal" class="modal">
+  <h3>¿Qué deseas hacer?</h3>
+  <p id="modal-text"></p>
+  <button id="btn-action-attack">⚔ Atacar</button>
+  <button id="btn-action-move">🚶 Mover tropas</button>
+  <button id="btn-action-cancel">❌ Cancelar</button>
+</div>
+
+<div id="action-qty-modal" class="modal">
+  <h3>Cantidad de tropas</h3>
+  <p id="modal-qty-text"></p>
+  <input type="number" id="modal-number" min="1">
+  <button id="modal-qty-confirm">✓ Confirmar</button>
+  <button id="modal-qty-cancel">❌ Cancelar</button>
+</div>
+
+<div id="recruit-modal" class="modal">
+  <h3>Reclutar Tropas</h3>
+  <button data-type="infantry" data-cost="100">🗡 Infantería (100$)</button>
+  <button data-type="cavalry" data-cost="150">🐎 Caballería (150$)</button>
+  <button data-type="archer" data-cost="120">🏹 Arqueros (120$)</button>
+  <button data-type="siege" data-cost="200">🏰 Asedio (200$)</button>
+  <button id="recruit-cancel">❌ Cancelar</button>
+</div>
+
+<div id="battle-modal" class="modal" style="width:700px;">
+  <h3 id="battle-text">⚔ ¡Batalla! ⚔</h3>
+  <p id="battle-rank"></p>
+  <div id="battle-arena">
+    <div class="battle-side" id="attacker-side">
+      <h4>Atacante</h4>
+      <div id="attacker-units"></div>
+      <div id="attacker-dice" class="dice-container"></div>
+    </div>
+    <div class="battle-side" id="defender-side">
+      <h4>Defensor</h4>
+      <div id="defender-units"></div>
+      <div id="defender-dice" class="dice-container"></div>
+    </div>
+  </div>
+  <p id="battle-result"></p>
+  <button id="battle-close">✓ Cerrar</button>
+</div>
+
+<div id="retreat-modal" class="modal">
+  <h3>⚠ Retirada</h3>
+  <p>¿Deseas retirarte de la batalla?</p>
+  <button id="retreat-yes">✓ Sí, retirarme</button>
+  <button id="retreat-no">⚔ No, seguir luchando</button>
+</div>
+
+<div id="event-notification">
+  <h3 id="event-title"></h3>
+  <p id="event-description"></p>
+  <button id="event-close">Continuar</button>
+</div>
+
+<div id="tutorial" class="show">
+  <div class="tutorial-content">
+    <h2>🏰 Bienvenido a RISK Medieval 🏰</h2>
+    <p style="font-size:16px; line-height:1.6;">
+      Conquista territorios, recluta ejércitos épicos y domina el mundo medieval.<br><br>
+      <strong>🎮 Controles:</strong><br>
+      • Haz clic en tus territorios para atacar o mover<br>
+      • Recluta diferentes tipos de tropas<br>
+      • Usa habilidades de héroe estratégicamente<br>
+      • ¡Atención al clima! Afecta las batallas<br><br>
+      <strong>🎯 Objetivo:</strong> Elimina a todos los enemigos
+    </p>
+    <button id="start-game">⚔ ¡Comenzar la Conquista! ⚔</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// Configuración
+const NUM_FACTIONS = 5;
+const PLAYER_ID = 0;
+const START_MONEY = 300;
+const INCOME_PER_TERR = 50;
+const FORTIFY_COST = 200;
+const FORTIFY_BONUS = 2;
+const colors = ['#00ff00', '#ff0000', '#0080ff', '#ff8000', '#ff00ff'];
+let current = 0;
+let selected = null;
+let target = null;
+let actionMode = null;
+let fortifyActive = {};
+let isCastle = {};
+let weather = 'clear';
+let turnCount = 0;
+
+// Sistema de logros
+const achievements = {
+  firstBlood: { name: 'Primera Sangre', desc: 'Gana tu primera batalla', unlocked: false },
+  conqueror: { name: 'Conquistador', desc: 'Conquista 5 territorios', unlocked: false },
+  warlord: { name: 'Señor de la Guerra', desc: 'Gana 10 batallas', unlocked: false },
+  emperor: { name: 'Emperador', desc: 'Controla 15 territorios', unlocked: false },
+  survivor: { name: 'Superviviente', desc: 'Sobrevive 20 turnos', unlocked: false }
+};
+
+let stats = {
+  battlesWon: 0,
+  territoriesConquered: 0,
+  totalTurns: 0
+};
+
+// Sistema de héroes
+const heroes = {
+  warrior: {
+    name: 'Guerrero',
+    abilities: [
+      { name: 'Furia de Batalla', desc: '+2 ataque por 1 turno', cooldown: 0, maxCooldown: 3 },
+      { name: 'Grito de Guerra', desc: 'Duplica tropas de 1 territorio', cooldown: 0, maxCooldown: 5 }
+    ]
+  }
+};
+
+let playerHero = { ...heroes.warrior };
+
+// Tipos de tropas
+const troopTypes = {
+  infantry: { cost: 100, attack: 1, defense: 1, bonusVs: 'archer', rank: 4 },
+  cavalry: { cost: 150, attack: 2, defense: 0.5, bonusVs: 'infantry', rank: 3 },
+  archer: { cost: 120, attack: 0.5, defense: 2, bonusVs: 'cavalry', rank: 2 },
+  siege: { cost: 200, attack: 3, defense: 1, bonusVs: null, rank: 1 }
+};
+
+// Territorios
+const territories = [
+  {id:0,name:'Alaska',lat:64.2,lng:-149,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,18,12],isCastle:false},
+  {id:1,name:'Canadá',lat:60,lng:-100,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[0,2,18,19],isCastle:false},
+  {id:2,name:'USA',lat:38,lng:-97,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,3,4],isCastle:false},
+  {id:3,name:'México',lat:23,lng:-102,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[2,4],isCastle:false},
+  {id:4,name:'Brasil',lat:-10,lng:-55,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[2,3,5,11],isCastle:false},
+  {id:5,name:'Argentina',lat:-34,lng:-64,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[4,11],isCastle:false},
+  {id:6,name:'Reino Unido',lat:55,lng:-3,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[7,8,19],isCastle:false},
+  {id:7,name:'Francia',lat:46,lng:2,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[6,8,9],isCastle:false},
+  {id:8,name:'Alemania',lat:51,lng:10,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[6,7,9,12],isCastle:false},
+  {id:9,name:'Italia',lat:42,lng:12,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[7,8,10],isCastle:false},
+  {id:10,name:'Egipto',lat:26,lng:31,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[9,11,14],isCastle:false},
+  {id:11,name:'Sudáfrica',lat:-30,lng:25,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[10,16,4,5],isCastle:false},
+  {id:12,name:'Rusia',lat:60,lng:90,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13,0,8],isCastle:false},
+  {id:13,name:'China',lat:35,lng:104,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[12,14,15,16],isCastle:false},
+  {id:14,name:'India',lat:21,lng:78,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13,10,16],isCastle:false},
+  {id:15,name:'Japón',lat:36,lng:138,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13],isCastle:false},
+  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[17,13,11,14],isCastle:false},
+  {id:17,name:'Nueva Zelanda',lat:-41,lng:174,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[16],isCastle:false},
+  {id:18,name:'Groenlandia',lat:72,lng:-40,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[0,1,19],isCastle:false},
+  {id:19,name:'Islandia',lat:65,lng:-18,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,6,18],isCastle:false},
+];
+
+// Jugadores
+const players = [];
+for(let i=0; i<NUM_FACTIONS; i++){
+  players.push({id:i, name:i===PLAYER_ID?'👑 Tú':'🤖 IA '+i, money:START_MONEY, isAI:i!==PLAYER_ID});
+}
+
+// Mapa Leaflet
+const map = L.map('map', {
+  zoomControl: false,
+  attributionControl: false
+}).setView([20,0], 2);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 5,
+  minZoom: 2
+}).addTo(map);
+
+
+
+// Asignar territorios iniciales
+let available = [...Array(territories.length).keys()];
+for(let p=0; p<NUM_FACTIONS; p++){
+  let idx = available.splice(Math.floor(Math.random()*available.length), 1)[0];
+  territories[idx].owner = p;
+  territories[idx].troops.infantry = 3;
+}
+
+// Asignar castillos aleatorios
+territories.forEach(t => {
+  if(Math.random() < 0.25) {
+    t.isCastle = true;
+    isCastle[t.id] = true;
+  }
+});
+
+// Crear markers
+territories.forEach(t=>{
+  t.marker = L.circleMarker([t.lat,t.lng], {
+    radius: t.isCastle ? 28 : 22,
+    color: '#000',
+    fillColor: t.owner!==null ? colors[t.owner] : '#555',
+    fillOpacity: 0.85,
+    weight: 3
+  }).addTo(map);
+  
+  t.label = L.marker([t.lat,t.lng+3], {
+    icon: L.divIcon({
+      className: 'territory-label',
+      html: `<div style="color:#fff;text-align:center;"><div>${t.name}${t.isCastle ? ' 🏰' : ''}<br>💂 ${getTotalTroops(t)}</div></div>`
+    })
+  }).addTo(map);
+  
+  t.marker.on('click', () => selectTerritory(t));
+});
+
+function getTotalTroops(t) {
+  return Object.values(t.troops).reduce((a, b) => a + b, 0);
+}
+
+// Sistema de clima
+const weatherTypes = ['clear', 'rain', 'snow', 'fog'];
+const weatherEffects = {
+  clear: { name: '☀ Despejado', attackMod: 0, defenseMod: 0 },
+  rain: { name: '🌧 Lluvia', attackMod: -1, defenseMod: +1 },
+  snow: { name: '❄ Nieve', attackMod: -2, defenseMod: 0 },
+  fog: { name: '🌫 Niebla', attackMod: -1, defenseMod: -1 }
+};
+
+function changeWeather() {
+  weather = weatherTypes[Math.floor(Math.random() * weatherTypes.length)];
+  updateWeatherDisplay();
+  createWeatherEffect();
+}
+
+function updateWeatherDisplay() {
+  document.getElementById('weather-info').textContent = weatherEffects[weather].name;
+}
+
+function createWeatherEffect() {
+  const overlay = document.getElementById('weather-overlay');
+  overlay.innerHTML = '';
+  
+  if(weather === 'rain') {
+    for(let i=0; i<50; i++) {
+      const drop = document.createElement('div');
+      drop.className = 'rain-drop';
+      drop.style.left = Math.random() * 100 + '%';
+      drop.style.animationDuration = (Math.random() * 0.5 + 0.5) + 's';
+      drop.style.animationDelay = Math.random() * 2 + 's';
+      overlay.appendChild(drop);
+    }
+  } else if(weather === 'snow') {
+    for(let i=0; i<30; i++) {
+      const flake = document.createElement('div');
+      flake.className = 'snow-flake';
+      flake.style.left = Math.random() * 100 + '%';
+      flake.style.animationDuration = (Math.random() * 3 + 2) + 's';
+      flake.style.animationDelay = Math.random() * 5 + 's';
+      overlay.appendChild(flake);
+    }
+  }
+}
+
+// Sistema de eventos aleatorios
+function triggerRandomEvent() {
+  if(Math.random() > 0.3) return; // 30% de probabilidad
+  
+  const events = [
+    {
+      title: '☠ ¡PLAGA!',
+      desc: 'Una terrible plaga azota un territorio aleatorio',
+      effect: () => {
+        const t = territories[Math.floor(Math.random() * territories.length)];
+        Object.keys(t.troops).forEach(type => {
+          t.troops[type] = Math.floor(t.troops[type] * 0.5);
+        });
+        addLog(`💀 Plaga en ${t.name}! Tropas reducidas a la mitad`);
+      }
+    },
+    {
+      title: '💰 ¡TESORO ENCONTRADO!',
+      desc: 'Tus exploradores encuentran un cofre de oro',
+      effect: () => {
+        players[PLAYER_ID].money += 300;
+        addLog(`💰 ¡Encontraste 300$ de oro!`);
+      }
+    },
+    {
+      title: '⚡ ¡REBELIÓN!',
+      desc: 'Un territorio se rebela contra su dueño',
+      effect: () => {
+        const t = territories.filter(t => t.owner !== null)[Math.floor(Math.random() * territories.filter(t => t.owner !== null).length)];
+        t.owner = null;
+        t.troops = {infantry:5,cavalry:0,archer:0,siege:0};
+        addLog(`⚡ Rebelión en ${t.name}!`);
+      }
+    },
+    {
+      title: '🎖 ¡REFUERZOS!',
+      desc: 'Tropas de élite se unen a tu causa',
+      effect: () => {
+        const myTerrs = territories.filter(t => t.owner === PLAYER_ID);
+        if(myTerrs.length > 0) {
+          const t = myTerrs[Math.floor(Math.random() * myTerrs.length)];
+          t.troops.cavalry += 2;
+          t.troops.archer += 2;
+          addLog(`🎖 Refuerzos llegan a ${t.name}!`);
+        }
+      }
+    }
+  ];
+  
+  const event = events[Math.floor(Math.random() * events.length)];
+  showEventNotification(event);
+}
+
+function showEventNotification(event) {
+  const notif = document.getElementById('event-notification');
+  document.getElementById('event-title').textContent = event.title;
+  document.getElementById('event-description').textContent = event.desc;
+  notif.classList.add('show');
+  
+  document.getElementById('event-close').onclick = () => {
+    event.effect();
+    notif.classList.remove('show');
+    refreshMarkers();
+  };
+}
+
+// Sistema de partículas
+function createBloodEffect(x, y) {
+  for(let i=0; i<10; i++) {
+    const particle = document.createElement('div');
+    particle.className = 'blood-particle';
+    particle.style.left = x + 'px';
+    particle.style.top = y + 'px';
+    particle.style.setProperty('--x', (Math.random() - 0.5) * 100 + 'px');
+    particle.style.setProperty('--y', (Math.random() - 0.5) * 100 + 'px');
+    document.body.appendChild(particle);
+    setTimeout(() => particle.remove(), 800);
+  }
+}
+
+function createSparkEffect(x, y) {
+  for(let i=0; i<8; i++) {
+    const particle = document.createElement('div');
+    particle.className = 'spark-particle';
+    particle.style.left = x + 'px';
+    particle.style.top = y + 'px';
+    particle.style.setProperty('--x', (Math.random() - 0.5) * 80 + 'px');
+    particle.style.setProperty('--y', (Math.random() - 0.5) * 80 + 'px');
+    document.body.appendChild(particle);
+    setTimeout(() => particle.remove(), 600);
+  }
+}
+
+// Actualizar markers
+function refreshMarkers() {
+  territories.forEach(t => {
+    t.marker.setStyle({
+      fillColor: t.owner !== null ? colors[t.owner] : '#555',
+      opacity: t.moved ? 0.5 : 1,
+      weight: (selected && t.id === selected.id) ? 5 : 3,
+      color: (selected && t.id === selected.id) ? '#ffff00' : '#000',
+      radius: t.isCastle ? 28 : 22
+    });
+    
+    t.label.setIcon(L.divIcon({
+      className: 'territory-label',
+      html: `<div style="color:#fff;text-align:center;"><div>${t.name}${t.isCastle ? ' 🏰' : ''}<br>💂 ${getTotalTroops(t)}</div></div>`
+    }));
+  });
+  
+  if(selected) {
+    selected.neighbors.forEach(nid => {
+      const n = territories.find(ter => ter.id === nid);
+      if(n && !n.moved) {
+        n.marker.setStyle({color: '#00ff00', weight: 4});
+      }
+    });
+  }
+  
+  renderPlayers();
+  checkAchievements();
+}
+
+// Render jugadores
+function renderPlayers() {
+  const playersEl = document.getElementById('players-list');
+  playersEl.innerHTML = '';
+  players.forEach(p => {
+    const terrCount = territories.filter(t => t.owner === p.id).length;
+    const div = document.createElement('div');
+    div.className = 'player-item' + (p.id === current ? ' current' : '');
+    div.innerHTML = `
+      <div>
+        <span class="player-color" style="background:${colors[p.id]}"></span>
+        ${p.name}
+      </div>
+      <div>
+        💰 ${p.money}<br>
+        🗺 ${terrCount} terr.
+      </div>
+    `;
+    playersEl.appendChild(div);
+  });
+}
+
+// Sistema de logros
+function renderAchievements() {
+  const list = document.getElementById('achievements-list');
+  list.innerHTML = '';
+  Object.values(achievements).forEach(ach => {
+    const div = document.createElement('div');
+    div.className = 'achievement' + (ach.unlocked ? ' unlocked' : '');
+    div.innerHTML = `
+      <strong>${ach.unlocked ? '✓' : '🔒'} ${ach.name}</strong><br>
+      <small>${ach.desc}</small>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function checkAchievements() {
+  if(!achievements.firstBlood.unlocked && stats.battlesWon >= 1) {
+    unlockAchievement('firstBlood');
+  }
+  if(!achievements.conqueror.unlocked && stats.territoriesConquered >= 5) {
+    unlockAchievement('conqueror');
+  }
+  if(!achievements.warlord.unlocked && stats.battlesWon >= 10) {
+    unlockAchievement('warlord');
+  }
+  if(!achievements.emperor.unlocked && territories.filter(t => t.owner === PLAYER_ID).length >= 15) {
+    unlockAchievement('emperor');
+  }
+  if(!achievements.survivor.unlocked && stats.totalTurns >= 20) {
+    unlockAchievement('survivor');
+  }
+}
+
+function unlockAchievement(key) {
+  achievements[key].unlocked = true;
+  addLog(`🏆 ¡Logro desbloqueado: ${achievements[key].name}!`);
+  renderAchievements();
+}
+
+// Sistema de héroes
+function renderHeroAbilities() {
+  const container = document.getElementById('hero-abilities');
+  container.innerHTML = '';
+  playerHero.abilities.forEach((ability, index) => {
+    const div = document.createElement('div');
+    div.className = 'hero-ability' + (ability.cooldown > 0 ? ' cooldown' : '');
+    div.innerHTML = `
+      <strong>⚡ ${ability.name}</strong> ${ability.cooldown > 0 ? `(CD: ${ability.cooldown})` : ''}<br>
+      <small>${ability.desc}</small>
+    `;
+    if(ability.cooldown === 0) {
+      div.onclick = () => useHeroAbility(index);
+    }
+    container.appendChild(div);
+  });
+}
+
+function useHeroAbility(index) {
+  const ability = playerHero.abilities[index];
+  if(ability.cooldown > 0) return;
+  
+  if(index === 0) { // Furia de Batalla
+    addLog(`⚡ Usaste: ${ability.name}!`);
+    ability.cooldown = ability.maxCooldown;
+    // Efecto: +2 ataque se aplica en batalla
+  } else if(index === 1) { // Grito de Guerra
+    const myTerrs = territories.filter(t => t.owner === PLAYER_ID && getTotalTroops(t) > 0);
+    if(myTerrs.length > 0) {
+      const t = myTerrs[Math.floor(Math.random() * myTerrs.length)];
+      Object.keys(t.troops).forEach(type => {
+        t.troops[type] *= 2;
+      });
+      addLog(`⚡ Grito de Guerra en ${t.name}! Tropas duplicadas!`);
+      ability.cooldown = ability.maxCooldown;
+    }
+  }
+  
+  renderHeroAbilities();
+  refreshMarkers();
+}
+
+function updateHeroCooldowns() {
+  playerHero.abilities.forEach(ability => {
+    if(ability.cooldown > 0) ability.cooldown--;
+  });
+  renderHeroAbilities();
+}
+
+// Log
+const logDiv = document.getElementById('log');
+function addLog(text) {
+  const p = document.createElement('div');
+  p.textContent = text;
+  logDiv.prepend(p);
+  if(logDiv.children.length > 50) {
+    logDiv.removeChild(logDiv.lastChild);
+  }
+}
+
+// Seleccionar territorio
+function selectTerritory(t) {
+  if(current !== PLAYER_ID) return;
+  if(t.owner !== current || t.moved || getTotalTroops(t) < 1) {
+    selected = null;
+    target = null;
+    actionMode = null;
+    refreshMarkers();
+    return;
+  }
+  selected = t;
+  showActionModal();
+  refreshMarkers();
+}
+
+// Modal acción
+const actionModal = document.getElementById('action-modal');
+function showActionModal() { 
+  actionModal.style.display = 'block'; 
+}
+
+document.getElementById('btn-action-cancel').onclick = () => {
+  selected = null;
+  actionModal.style.display = 'none';
+  refreshMarkers();
+};
+
+document.getElementById('btn-action-attack').onclick = () => {
+  actionMode = 'attack';
+  actionModal.style.display = 'none';
+  selectTarget();
+};
+
+document.getElementById('btn-action-move').onclick = () => {
+  actionMode = 'move';
+  actionModal.style.display = 'none';
+  selectTarget();
+};
+
+// Seleccionar destino
+function selectTarget() {
+  territories.forEach(t => {
+    t.marker.off('click');
+    t.marker.on('click', () => {
+      if(t.id === selected.id) {
+        selected = null;
+        target = null;
+        actionMode = null;
+        resetClickHandlers();
+        refreshMarkers();
+        return;
+      }
+      if(selected.neighbors.includes(t.id)) {
+        if(actionMode === 'attack' && t.owner === current) {
+          alert('No puedes atacar tu propio territorio');
+          return;
+        }
+        if(actionMode === 'attack' && t.isCastle && selected.troops.siege === 0) {
+          alert('Necesitas armas de asedio para atacar un castillo 🏰');
+          return;
+        }
+        if(actionMode === 'move' && t.owner !== current) {
+          alert('No puedes mover tropas a territorio enemigo');
+          return;
+        }
+        target = t;
+        showQuantityModal();
+      }
+    });
+  });
+}
+
+// Modal cantidad
+const qtyModal = document.getElementById('action-qty-modal');
+function showQuantityModal() {
+  const maxT = getTotalTroops(selected) - 1;
+  const input = document.getElementById('modal-number');
+  input.max = maxT;
+  input.value = Math.min(3, maxT);
+  document.getElementById('modal-qty-text').textContent = `Máx: ${maxT} tropas`;
+  qtyModal.style.display = 'block';
+}
+
+document.getElementById('modal-qty-cancel').onclick = () => {
+  qtyModal.style.display = 'none';
+  selected = null;
+  target = null;
+  actionMode = null;
+  refreshMarkers();
+  resetClickHandlers();
+};
+
+document.getElementById('modal-qty-confirm').onclick = () => {
+  const qty = parseInt(document.getElementById('modal-number').value);
+  if(actionMode === 'move') moveTroops(selected, target, qty);
+  else if(actionMode === 'attack') battle(selected, target, qty);
+  qtyModal.style.display = 'none';
+  selected = null;
+  target = null;
+  actionMode = null;
+  refreshMarkers();
+  resetClickHandlers();
+};
+
+// Mover tropas
+function moveTroops(from, to, qty) {
+  const totalFrom = getTotalTroops(from);
+  if(qty > totalFrom - 1) qty = totalFrom - 1;
+  const ratio = qty / totalFrom;
+  
+  Object.keys(troopTypes).forEach(type => {
+    const moveAmt = Math.floor(from.troops[type] * ratio);
+    from.troops[type] -= moveAmt;
+    to.troops[type] += moveAmt;
+  });
+  
+  from.moved = true;
+  addLog(`🚶 ${players[current].name} mueve ${qty} tropas: ${from.name} → ${to.name}`);
+  refreshMarkers();
+}
+
+// Batalla épica
+const battleModal = document.getElementById('battle-modal');
+const retreatModal = document.getElementById('retreat-modal');
+
+function battle(attacker, defender, qty) {
+  const atkTroops = {};
+  const totalAtk = getTotalTroops(attacker);
+  const ratio = qty / totalAtk;
+  
+  Object.keys(troopTypes).forEach(type => {
+    atkTroops[type] = Math.floor(attacker.troops[type] * ratio);
+    attacker.troops[type] -= atkTroops[type];
+  });
+  
+  const defTroops = {...defender.troops};
+  
+  document.getElementById('battle-text').textContent = `⚔ ${attacker.name} ⚔ VS ⚔ ${defender.name} ${defender.isCastle ? '🏰' : ''}`;
+  
+  const atkUnitsDiv = document.getElementById('attacker-units');
+  const defUnitsDiv = document.getElementById('defender-units');
+  const atkDiceDiv = document.getElementById('attacker-dice');
+  const defDiceDiv = document.getElementById('defender-dice');
+  
+  atkUnitsDiv.innerHTML = '';
+  defUnitsDiv.innerHTML = '';
+  atkDiceDiv.innerHTML = '';
+  defDiceDiv.innerHTML = '';
+  
+  Object.keys(atkTroops).forEach(type => {
+    for(let i=0; i<atkTroops[type]; i++) {
+      const unit = document.createElement('div');
+      unit.className = `battle-unit ${type}`;
+      atkUnitsDiv.appendChild(unit);
+    }
+  });
+  
+  Object.keys(defTroops).forEach(type => {
+    for(let i=0; i<defTroops[type]; i++) {
+      const unit = document.createElement('div');
+      unit.className = `battle-unit ${type}`;
+      defUnitsDiv.appendChild(unit);
+    }
+  });
+  
+  battleModal.style.display = 'block';
+  
+  let atkUnits = [...atkUnitsDiv.querySelectorAll('.battle-unit')];
+  let defUnits = [...defUnitsDiv.querySelectorAll('.battle-unit')];
+  let atkLoss = 0, defLoss = 0;
+  let rank = 1;
+  let castleRerollUsed = false;
+  
+  function simulateRank() {
+    if(getTotalTroops({troops: atkTroops}) === 0 || getTotalTroops({troops: defTroops}) === 0) {
+      Object.keys(defTroops).forEach(type => defender.troops[type] = defTroops[type]);
+      let survivingAtk = qty - atkLoss;
+      
+      if(getTotalTroops({troops: defTroops}) <= 0 && survivingAtk > 0) {
+        const wasEnemy = defender.owner !== current;
+        defender.owner = current;
+        Object.keys(atkTroops).forEach(type => {
+          defender.troops[type] = atkTroops[type];
+        });
+        
+        if(wasEnemy) {
+          stats.territoriesConquered++;
+          stats.battlesWon++;
+        }
+        addLog(`🎉 ${players[current].name} conquistó ${defender.name}!`);
+      }
+      
+      document.getElementById('battle-result').textContent = `💀 Atacante: -${atkLoss} | Defensor: -${defLoss}`;
+      attacker.moved = true;
+      refreshMarkers();
+      return;
+    }
+    
+    if(rank > 4) {
+      rank = 1;
+      castleRerollUsed = false;
+      
+      if(players[current].id === PLAYER_ID && actionMode === 'attack') {
+        retreatModal.style.display = 'block';
+        document.getElementById('retreat-yes').onclick = () => {
+          retreatModal.style.display = 'none';
+          battleModal.style.display = 'none';
+          Object.keys(atkTroops).forEach(type => attacker.troops[type] += atkTroops[type]);
+          addLog(`🏃 ${players[current].name} se retira de ${defender.name}`);
+          attacker.moved = true;
+          refreshMarkers();
+          resetClickHandlers();
+        };
+        document.getElementById('retreat-no').onclick = () => {
+          retreatModal.style.display = 'none';
+          simulateRank();
+        };
+        return;
+      }
+    }
+    
+    const rankNames = ['', '🏰 Asedio', '🏹 Arqueros', '🐎 Caballería', '⚔ Asalto'];
+    document.getElementById('battle-rank').textContent = rankNames[rank];
+    
+    const atkInRank = (atkTroops.siege * (rank === 1 ? 2 : 0) + 
+                      atkTroops.archer * (rank === 2 ? 1 : 0) + 
+                      atkTroops.cavalry * (rank === 3 ? 1 : 0) + 
+                      (rank === 4 ? Math.min(3, getTotalTroops({troops: atkTroops})) : 0));
+    
+    const defInRank = (defTroops.siege * (rank === 1 ? 2 : 0) + 
+                      defTroops.archer * (rank === 2 ? 1 : 0) + 
+                      defTroops.cavalry * (rank === 3 ? 1 : 0) + 
+                      (rank === 4 ? Math.min(2, getTotalTroops({troops: defTroops})) : 0));
+    
+    let atkHits = 0, defHits = 0;
+    let atkRolls = [], defRolls = [];
+    
+    // Aplicar efectos de clima
+    const weatherMod = weatherEffects[weather];
+    
+    // Aplicar habilidad de héroe si está activa
+    let heroBonus = 0;
+    if(current === PLAYER_ID && playerHero.abilities[0].cooldown > 0) {
+      heroBonus = 2;
+    }
+    
+    // Simular dados atacante
+    for(let i=0; i<atkInRank; i++) {
+      let roll = Math.floor(Math.random()*6) + 1;
+      let hitThreshold = rank === 2 ? 5 : 4;
+      hitThreshold += weatherMod.attackMod;
+      atkRolls.push(roll);
+      if(roll >= hitThreshold) atkHits++;
+    }
+    atkHits += heroBonus;
+    
+    // Simular dados defensor
+    for(let i=0; i<defInRank; i++) {
+      let roll = Math.floor(Math.random()*6) + 1;
+      let hitThreshold = rank === 2 ? 5 : 4;
+      hitThreshold += weatherMod.defenseMod;
+      defRolls.push(roll);
+      if(roll >= hitThreshold) defHits++;
+    }
+    
+    // Bonus fortificación
+    defHits += fortifyActive[defender.id] || 0;
+    
+    // Bonus castillo (reroll)
+    if(defender.isCastle && !castleRerollUsed) {
+      let rerollHits = 0, rerollRolls = [];
+      for(let i=0; i<defInRank; i++) {
+        let roll = Math.floor(Math.random()*6) + 1;
+        let hitThreshold = rank === 2 ? 5 : 4;
+        rerollRolls.push(roll);
+        if(roll >= hitThreshold) rerollHits++;
+      }
+      if(rerollHits > defHits) {
+        defHits = rerollHits;
+        defRolls = rerollRolls;
+        addLog('🏰 ¡El castillo retiró los dados!');
+      }
+      castleRerollUsed = true;
+    }
+    
+    // Mostrar dados con animación
+    atkDiceDiv.innerHTML = '';
+    defDiceDiv.innerHTML = '';
+    
+    atkRolls.forEach(roll => {
+      const dice = document.createElement('div');
+      dice.className = 'dice rolling';
+      dice.innerHTML = `
+        <div class="dice-inner">
+          <div class="dice-face front">${roll}</div>
+        </div>
+      `;
+      atkDiceDiv.appendChild(dice);
+    });
+    
+    defRolls.forEach(roll => {
+      const dice = document.createElement('div');
+      dice.className = 'dice rolling';
+      dice.innerHTML = `
+        <div class="dice-inner">
+          <div class="dice-face front">${roll}</div>
+        </div>
+      `;
+      defDiceDiv.appendChild(dice);
+    });
+    
+    // Animar unidades atacando
+    setTimeout(() => {
+      atkUnits.slice(0, atkInRank).forEach(u => u.classList.add('attacking'));
+      defUnits.slice(0, defInRank).forEach(u => u.classList.add('defending'));
+      
+      // Efectos de partículas
+      const arena = document.getElementById('battle-arena');
+      const rect = arena.getBoundingClientRect();
+      createSparkEffect(rect.left + rect.width/2, rect.top + rect.height/2);
+    }, 1000);
+    
+    // Aplicar bajas
+    setTimeout(() => {
+      for(let h=0; h<atkHits; h++) {
+        removeUnit(defUnits, defTroops);
+        defLoss++;
+        const rect = defUnitsDiv.getBoundingClientRect();
+        createBloodEffect(rect.left + rect.width/2, rect.top + rect.height/2);
+      }
+      for(let h=0; h<defHits; h++) {
+        removeUnit(atkUnits, atkTroops);
+        atkLoss++;
+        const rect = atkUnitsDiv.getBoundingClientRect();
+        createBloodEffect(rect.left + rect.width/2, rect.top + rect.height/2);
+      }
+      
+      setTimeout(() => simulateRank(), 800);
+      rank++;
+    }, 2000);
+  }
+  
+  function removeUnit(units, troops) {
+    if(units.length > 0) {
+      const unit = units.shift();
+      unit.classList.add('defeated');
+      const type = unit.classList[1];
+      troops[type]--;
+    }
+  }
+  
+  document.getElementById('battle-close').onclick = () => {
+    battleModal.style.display = 'none';
+    atkUnitsDiv.innerHTML = '';
+    defUnitsDiv.innerHTML = '';
+    atkDiceDiv.innerHTML = '';
+    defDiceDiv.innerHTML = '';
+    document.getElementById('battle-result').textContent = '';
+    resetClickHandlers();
+  };
+  
+  simulateRank();
+}
+
+// Reclutar
+const recruitModal = document.getElementById('recruit-modal');
+document.getElementById('btn-recruit').onclick = () => {
+  if(current !== PLAYER_ID) return;
+  addLog('📍 Selecciona un territorio para reclutar');
+  territories.forEach(t => {
+    t.marker.off('click');
+    t.marker.on('click', () => {
+      if(t.owner === current) {
+        selected = t;
+        recruitModal.style.display = 'block';
+        resetClickHandlers();
+        refreshMarkers();
+      }
+    });
+  });
+};
+
+recruitModal.querySelectorAll('button[data-type]').forEach(btn => {
+  btn.onclick = () => {
+    const type = btn.dataset.type;
+    const cost = parseInt(btn.dataset.cost);
+    if(players[current].money >= cost) {
+      selected.troops[type]++;
+      players[current].money -= cost;
+      addLog(`🗡 ${players[current].name} reclutó 1 ${type} en ${selected.name}`);
+      recruitModal.style.display = 'none';
+      selected = null;
+      refreshMarkers();
+    } else {
+      alert('💰 No tienes suficiente dinero');
+    }
+  };
+});
+
+document.getElementById('recruit-cancel').onclick = () => {
+  recruitModal.style.display = 'none';
+  selected = null;
+  resetClickHandlers();
+};
+
+// Fortificar
+document.getElementById('btn-fortify').onclick = () => {
+  if(current !== PLAYER_ID) return;
+  if(players[current].money < FORTIFY_COST) {
+    alert(`💰 Necesitas ${FORTIFY_COST}`);
+    return;
+    return;
+  }
+  addLog('📍 Selecciona un territorio para fortificar');
+  territories.forEach(t => {
+    t.marker.off('click');
+    t.marker.on('click', () => {
+      if(t.owner === current) {
+        players[current].money -= FORTIFY_COST;
+        fortifyActive[t.id] = FORTIFY_BONUS;
+        addLog(`🛡 ${players[current].name} fortificó ${t.name} (+${FORTIFY_BONUS} defensa)`);
+        resetClickHandlers();
+        refreshMarkers();
+      }
+    });
+  });
+};
+
+// Botón de héroe
+document.getElementById('btn-hero').onclick = () => {
+  if(current !== PLAYER_ID) return;
+  const panel = document.getElementById('hero-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+};
+
+// Pasar turno
+document.getElementById('btn-pass').onclick = () => {
+  if(current !== PLAYER_ID) return;
+  endTurn();
+};
+
+function endTurn() {
+  const income = territories.filter(t => t.owner === current).length * INCOME_PER_TERR;
+  players[current].money += income;
+  territories.filter(t => t.owner === current).forEach(t => t.moved = false);
+  fortifyActive = {};
+  addLog(`✅ ${players[current].name} termina turno. Ingreso: +${income}`);
+  
+  if(current === PLAYER_ID) {
+    stats.totalTurns++;
+    updateHeroCooldowns();
+  }
+  
+  current = (current + 1) % NUM_FACTIONS;
+  turnCount++;
+  
+  // Eventos aleatorios cada 3 turnos
+  if(turnCount % 3 === 0) {
+    triggerRandomEvent();
+  }
+  
+  // Cambiar clima cada 5 turnos
+  if(turnCount % 5 === 0) {
+    changeWeather();
+  }
+  
+  refreshMarkers();
+  
+  // Verificar victoria
+  const activePlayers = new Set(territories.map(t => t.owner).filter(o => o !== null));
+  if(activePlayers.size === 1) {
+    const winner = [...activePlayers][0];
+    showVictory(winner);
+    return;
+  }
+  
+  if(players[current].isAI) {
+    runAI(players[current]);
+  }
+}
+
+function showVictory(winnerId) {
+  const notif = document.getElementById('event-notification');
+  document.getElementById('event-title').textContent = winnerId === PLAYER_ID ? '🎉 ¡VICTORIA!' : '💀 DERROTA';
+  document.getElementById('event-description').textContent = winnerId === PLAYER_ID ? 
+    '¡Has conquistado el mundo medieval! Eres el emperador supremo.' :
+    `${players[winnerId].name} ha conquistado el mundo. Mejor suerte la próxima vez.`;
+  notif.classList.add('show');
+  
+  document.getElementById('event-close').onclick = () => {
+    location.reload();
+  };
+}
+
+// IA avanzada
+function runAI(p) {
+  document.getElementById('btn-recruit').disabled = true;
+  document.getElementById('btn-fortify').disabled = true;
+  document.getElementById('btn-hero').disabled = true;
+  document.getElementById('btn-pass').disabled = true;
+  
+  const myTerrs = territories.filter(t => t.owner === p.id && !t.moved);
+  let delay = 0;
+  
+  function nextAction(index) {
+    if(index >= myTerrs.length) {
+      endTurn();
+      document.getElementById('btn-recruit').disabled = false;
+      document.getElementById('btn-fortify').disabled = false;
+      document.getElementById('btn-hero').disabled = false;
+      document.getElementById('btn-pass').disabled = false;
+      return;
+    }
+    
+    const t = myTerrs[index];
+    setTimeout(() => {
+      // Reclutar tropas
+      if(p.money >= 120 && Math.random() > 0.4) {
+        const types = Object.keys(troopTypes);
+        const affordableTypes = types.filter(type => troopTypes[type].cost <= p.money);
+        if(affordableTypes.length > 0) {
+          const type = affordableTypes[Math.floor(Math.random() * affordableTypes.length)];
+          const cost = troopTypes[type].cost;
+          t.troops[type]++;
+          p.money -= cost;
+          addLog(`🗡 ${p.name} recluta ${type} en ${t.name}`);
+        }
+      }
+      
+      // Fortificar territorios estratégicos
+      if(p.money >= FORTIFY_COST && Math.random() > 0.7) {
+        const frontierTerrs = territories.filter(ter => 
+          ter.owner === p.id && 
+          ter.neighbors.some(nid => territories.find(n => n.id === nid).owner !== p.id)
+        );
+        if(frontierTerrs.length > 0) {
+          const target = frontierTerrs[Math.floor(Math.random() * frontierTerrs.length)];
+          p.money -= FORTIFY_COST;
+          fortifyActive[target.id] = FORTIFY_BONUS;
+          addLog(`🛡 ${p.name} fortificó ${target.name}`);
+        }
+      }
+      
+      // Atacar territorios enemigos
+      const enemyNeighbors = t.neighbors.filter(nid => {
+        const n = territories.find(ter => ter.id === nid);
+        return n.owner !== p.id && (!n.isCastle || t.troops.siege > 0);
+      });
+      
+      if(enemyNeighbors.length > 0 && getTotalTroops(t) > 2) {
+        const targetId = enemyNeighbors[Math.floor(Math.random() * enemyNeighbors.length)];
+        const target = territories.find(ter => ter.id === targetId);
+        const atkForce = Math.min(Math.floor(getTotalTroops(t) * 0.7), getTotalTroops(t) - 1);
+        
+        if(atkForce > 0) {
+          battle(t, target, atkForce);
+        }
+      }
+      
+      // Mover tropas hacia el frente
+      const friendlyNeighbors = t.neighbors.filter(nid => {
+        const n = territories.find(ter => ter.id === nid);
+        return n.owner === p.id && 
+               n.neighbors.some(nnid => territories.find(nn => nn.id === nnid).owner !== p.id);
+      });
+      
+      if(friendlyNeighbors.length > 0 && getTotalTroops(t) > 4 && Math.random() > 0.6) {
+        const targetId = friendlyNeighbors[Math.floor(Math.random() * friendlyNeighbors.length)];
+        const target = territories.find(ter => ter.id === targetId);
+        moveTroops(t, target, Math.floor(getTotalTroops(t) * 0.5));
+      }
+      
+      t.moved = true;
+      refreshMarkers();
+      nextAction(index + 1);
+    }, delay);
+    
+    delay = 800 + Math.random() * 400;
+  }
+  
+  nextAction(0);
+}
+
+// Resetear handlers de click
+function resetClickHandlers() {
+  territories.forEach(t => {
+    t.marker.off('click');
+    t.marker.on('click', () => selectTerritory(t));
+  });
+}
+
+// Tutorial
+document.getElementById('start-game').onclick = () => {
+  document.getElementById('tutorial').classList.remove('show');
+  changeWeather();
+  renderHeroAbilities();
+  renderAchievements();
+  refreshMarkers();
+};
+
+// Inicialización
+changeWeather();
+renderHeroAbilities();
+renderAchievements();
+refreshMarkers();
+
+// Atajos de teclado
+document.addEventListener('keydown', (e) => {
+  if(current !== PLAYER_ID) return;
+  
+  switch(e.key) {
+    case 'r':
+    case 'R':
+      document.getElementById('btn-recruit').click();
+      break;
+    case 'f':
+    case 'F':
+      document.getElementById('btn-fortify').click();
+      break;
+    case 'h':
+    case 'H':
+      document.getElementById('btn-hero').click();
+      break;
+    case ' ':
+    case 'Enter':
+      document.getElementById('btn-pass').click();
+      break;
+    case 'Escape':
+      if(selected) {
+        selected = null;
+        refreshMarkers();
+      }
+      break;
+  }
+});
+
+// Animación de fondo (estrellas)
+function createStars() {
+  for(let i=0; i<100; i++) {
+    setTimeout(() => {
+      const star = document.createElement('div');
+      star.style.position = 'fixed';
+      star.style.width = Math.random() * 3 + 'px';
+      star.style.height = star.style.width;
+      star.style.background = '#fff';
+      star.style.borderRadius = '50%';
+      star.style.left = Math.random() * window.innerWidth + 'px';
+      star.style.top = Math.random() * window.innerHeight + 'px';
+      star.style.opacity = Math.random() * 0.5 + 0.3;
+      star.style.animation = `twinkle ${Math.random() * 3 + 2}s infinite`;
+      star.style.pointerEvents = 'none';
+      star.style.zIndex = '1';
+      document.body.appendChild(star);
+    }, i * 50);
+  }
+}
+
+// Animación de parpadeo para estrellas
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+`;
+document.head.appendChild(style);
+
+createStars();
+
+// Mostrar consejo cada cierto tiempo
+const tips = [
+  '💡 Usa las armas de asedio para atacar castillos',
+  '💡 La caballería es efectiva contra la infantería',
+  '💡 Los arqueros son mejores en defensa',
+  '💡 El clima afecta el resultado de las batallas',
+  '💡 Fortifica territorios fronterizos para mejor defensa',
+  '💡 Las habilidades de héroe pueden cambiar la batalla',
+  '💡 Acumula dinero para reclutar tropas de élite',
+  '💡 Los castillos dan ventaja defensiva con reroll',
+  '💡 Atajos: R=Reclutar, F=Fortificar, H=Héroe, Espacio=Pasar',
+  '💡 Conquista territorios para aumentar tus ingresos'
+];
+
+let tipIndex = 0;
+setInterval(() => {
+  if(current === PLAYER_ID && !document.getElementById('battle-modal').style.display) {
+    addLog(`${tips[tipIndex]}`);
+    tipIndex = (tipIndex + 1) % tips.length;
+  }
+}, 30000);
+
+// Efecto de sonido visual cuando se hace clic
+document.addEventListener('click', (e) => {
+  const ripple = document.createElement('div');
+  ripple.style.position = 'fixed';
+  ripple.style.left = e.clientX + 'px';
+  ripple.style.top = e.clientY + 'px';
+  ripple.style.width = '10px';
+  ripple.style.height = '10px';
+  ripple.style.borderRadius = '50%';
+  ripple.style.border = '2px solid #caa43b';
+  ripple.style.transform = 'translate(-50%, -50%)';
+  ripple.style.pointerEvents = 'none';
+  ripple.style.animation = 'ripple 0.6s ease-out';
+  ripple.style.zIndex = '9999';
+  document.body.appendChild(ripple);
+  
+  setTimeout(() => ripple.remove(), 600);
+});
+
+const rippleStyle = document.createElement('style');
+rippleStyle.textContent = `
+  @keyframes ripple {
+    to {
+      width: 50px;
+      height: 50px;
+      opacity: 0;
+    }
+  }
+`;
+document.head.appendChild(rippleStyle);
+
+console.log('%c⚔ RISK Medieval - Edición Épica ⚔', 'color: #caa43b; font-size: 20px; font-weight: bold;');
+console.log('%cDesarrollado con pasión por la estrategia medieval', 'color: #caa43b; font-size: 12px;');
+console.log('%cControles: R=Reclutar | F=Fortificar | H=Héroe | Espacio=Pasar turno', 'color: #00ff00; font-size: 11px;');
+</script>
+</body>
+</html>
