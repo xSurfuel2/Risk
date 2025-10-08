@@ -96,7 +96,22 @@ const territories = [
   {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:0,moved:false,neighbors:[17,13]},
   {id:17,name:'New Zealand',lat:-41,lng:174,owner:null,troops:0,moved:false,neighbors:[16]},
   {id:18,name:'Greenland',lat:72,lng:-40,owner:null,troops:0,moved:false,neighbors:[0,1]},
-  {id:19,name:'Iceland',lat:65,lng:-18,owner:null,troops:0,moved:false,neighbors:[1,6]}
+  {id:19,name:'Iceland',lat:65,lng:-18,owner:null,troops:0,moved:false,neighbors:[1,6]},
+  {id:4,name:'Brasil',lat:-10,lng:-55,owner:null,troops:0,moved:false,neighbors:[2,3,5,11]}, // +11
+  {id:5,name:'Argentina',lat:-34,lng:-64,owner:null,troops:0,moved:false,neighbors:[4,11]}, // +11
+  {id:8,name:'Germany',lat:51,lng:10,owner:null,troops:0,moved:false,neighbors:[6,7,9,12]}, // +12
+  {id:10,name:'Egypt',lat:26,lng:31,owner:null,troops:0,moved:false,neighbors:[9,11,14]}, // +14
+  {id:11,name:'South Africa',lat:-30,lng:25,owner:null,troops:0,moved:false,neighbors:[10,16,4,5]}, // +16,+4,+5
+  {id:12,name:'Russia',lat:60,lng:90,owner:null,troops:0,moved:false,neighbors:[13,0,8]}, // +8
+  {id:14,name:'India',lat:21,lng:78,owner:null,troops:0,moved:false,neighbors:[13,10]}, // +10
+  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:0,moved:false,neighbors:[17,13,11]}, // +11
+  {id:18,name:'Greenland',lat:72,lng:-40,owner:null,troops:0,moved:false,neighbors:[0,1,19]}, // +19
+  {id:19,name:'Iceland',lat:65,lng:-18,owner:null,troops:0,moved:false,neighbors:[1,6,18]}, // +18
+  {id:10,name:'Egypt',lat:26,lng:31,owner:null,troops:0,moved:false,neighbors:[9,11,14]}, // ya tiene India (14)
+  {id:14,name:'India',lat:21,lng:78,owner:null,troops:0,moved:false,neighbors:[13,10,16]}, // +16 Australia
+  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:0,moved:false,neighbors:[17,13,11,14]}, // +14 India
+
+
 ];
 
 // --- Jugadores ---
