@@ -3,33 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RISK Medieval — Mapa Interactivo</title>
+<title>RISK Medieval — Mapa Interactivo Dinámico</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 body, html { margin:0; height:100%; font-family:Arial, sans-serif; }
 #map { height: 100%; }
 #sidebar{
-  position:fixed; top:10px; left:10px; width:300px; max-height:95%; background:rgba(0,0,0,0.6);
+  position:fixed; top:10px; left:10px; width:350px; max-height:95%; background:rgba(0,0,0,0.7);
   padding:10px; border-radius:8px; color:#fff; overflow:auto; z-index:1000;
 }
-.player-item{ padding:6px; margin:4px 0; border-radius:6px; display:flex; justify-content:space-between; align-items:center; }
-.player-color{ width:18px; height:18px; border-radius:50%; margin-right:6px; display:inline-block; }
+.player-item{ padding:8px; margin:4px 0; border-radius:6px; display:flex; justify-content:space-between; align-items:center; }
+.player-color{ width:20px; height:20px; border-radius:50%; margin-right:8px; display:inline-block; }
 .player-item.current{ box-shadow: inset 0 0 0 2px #caa43b; }
-.controls{ margin:6px 0; }
-.controls button{ margin:4px; padding:6px 12px; border:none; border-radius:5px; cursor:pointer; background:#444; color:#caa43b; }
-#log{ margin-top:10px; max-height:250px; overflow:auto; background:rgba(0,0,0,0.3); padding:6px; font-size:12px; border-radius:6px;}
-#action-modal, #action-qty-modal{
+.controls{ margin:8px 0; }
+.controls button{ margin:4px; padding:8px 14px; border:none; border-radius:5px; cursor:pointer; background:#555; color:#caa43b; transition: background 0.3s; }
+.controls button:hover{ background:#777; }
+#log{ margin-top:10px; max-height:300px; overflow:auto; background:rgba(0,0,0,0.3); padding:8px; font-size:12px; border-radius:6px;}
+#action-modal, #action-qty-modal, #recruit-modal, #battle-modal{
   display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-  background:rgba(20,20,20,0.95); padding:16px; border-radius:10px; z-index:2000;
-  color:#caa43b; width:280px;
+  background:rgba(20,20,20,0.95); padding:20px; border-radius:12px; z-index:2000;
+  color:#caa43b; width:320px; text-align:center;
 }
-#action-qty-modal input{ width:100%; margin-bottom:8px; }
-#action-qty-modal button{ display:block; margin:6px 0; width:100%; }
+#action-qty-modal input{ width:100%; margin-bottom:10px; padding:6px; }
+#action-qty-modal button, #recruit-modal button, #battle-modal button{ display:block; margin:8px auto; width:80%; padding:8px; }
 .territory-label div{
   background: rgba(0,0,0,0.6);
-  padding:2px 4px; border-radius:4px;
-  display:inline-block;
+  padding:4px 6px; border-radius:4px;
+  display:inline-block; font-size:12px;
 }
+#battle-arena{ margin:20px 0; height:150px; display:flex; justify-content:space-between; align-items:center; }
+.battle-side{ width:45%; text-align:center; }
+.dice-roll{ font-size:24px; margin:5px; animation: roll 1s ease-in-out; }
+@keyframes roll { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.battle-unit{ display:inline-block; margin:5px; width:40px; height:40px; background-size:cover; transition: transform 0.5s; }
+.infantry{ background-image: url('https://via.placeholder.com/40?text=Inf'); }
+.cavalry{ background-image: url('https://via.placeholder.com/40?text=Cav'); }
+.archer{ background-image: url('https://via.placeholder.com/40?text=Arc'); }
+.battle-unit.defeated{ transform: scale(0); opacity:0; }
 </style>
 </head>
 <body>
@@ -38,7 +48,8 @@ body, html { margin:0; height:100%; font-family:Arial, sans-serif; }
   <h3>Jugadores</h3>
   <div id="players-list"></div>
   <div class="controls">
-    <button id="btn-recruit">Reclutar (100$)</button>
+    <button id="btn-recruit">Reclutar</button>
+    <button id="btn-fortify">Fortificar (200$)</button>
     <button id="btn-pass">Pasar turno</button>
   </div>
   <h4>Registro de acciones</h4>
@@ -61,57 +72,71 @@ body, html { margin:0; height:100%; font-family:Arial, sans-serif; }
   <button id="modal-qty-cancel">Cancelar</button>
 </div>
 
+<!-- Modal reclutar -->
+<div id="recruit-modal">
+  <p>Elige tipo de tropa para reclutar</p>
+  <button data-type="infantry" data-cost="100">Infantería (100$ - Balanceada)</button>
+  <button data-type="cavalry" data-cost="150">Caballería (150$ - Bonus ataque)</button>
+  <button data-type="archer" data-cost="120">Arqueros (120$ - Bonus defensa)</button>
+  <button id="recruit-cancel">Cancelar</button>
+</div>
+
+<!-- Modal batalla -->
+<div id="battle-modal">
+  <p id="battle-text">¡Batalla en curso!</p>
+  <div id="battle-arena">
+    <div class="battle-side" id="attacker-side"></div>
+    <div class="battle-side" id="defender-side"></div>
+  </div>
+  <p id="battle-result"></p>
+  <button id="battle-close">Cerrar</button>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // Configuración
 const NUM_FACTIONS = 5;
 const PLAYER_ID = 0;
-const START_MONEY = 100;
-const RECRUIT_COST = 100;
+const START_MONEY = 200;
 const INCOME_PER_TERR = 50;
+const FORTIFY_COST = 200;
+const FORTIFY_BONUS = 2; // Bonus defensa temporal
 const colors = ['green','red','blue','orange','purple'];
 let current = 0;
 let selected = null;
 let target = null;
 let actionMode = null;
+let fortifyActive = {}; // {terrId: bonus}
 
-// Territorios simplificados para ejemplo
+// Tipos de tropas
+const troopTypes = {
+  infantry: { cost: 100, attack: 1, defense: 1, bonusVs: 'archer' }, // Infantería fuerte vs arqueros
+  cavalry: { cost: 150, attack: 2, defense: 0.5, bonusVs: 'infantry' }, // Caballería fuerte vs infantería
+  archer: { cost: 120, attack: 0.5, defense: 2, bonusVs: 'cavalry' } // Arqueros fuerte vs caballería
+};
+
+// Territorios simplificados con tropas como objeto
 const territories = [
-  {id:0,name:'Alaska',lat:64.2,lng:-149,owner:null,troops:0,moved:false,neighbors:[1,18,12]},
-  {id:1,name:'Canada',lat:60,lng:-100,owner:null,troops:0,moved:false,neighbors:[0,2,18,19]},
-  {id:2,name:'USA',lat:38,lng:-97,owner:null,troops:0,moved:false,neighbors:[1,3,4]},
-  {id:3,name:'Mexico',lat:23,lng:-102,owner:null,troops:0,moved:false,neighbors:[2,4]},
-  {id:4,name:'Brasil',lat:-10,lng:-55,owner:null,troops:0,moved:false,neighbors:[2,3,5]},
-  {id:5,name:'Argentina',lat:-34,lng:-64,owner:null,troops:0,moved:false,neighbors:[4]},
-  {id:6,name:'UK',lat:55,lng:-3,owner:null,troops:0,moved:false,neighbors:[7,8,19]},
-  {id:7,name:'France',lat:46,lng:2,owner:null,troops:0,moved:false,neighbors:[6,8,9]},
-  {id:8,name:'Germany',lat:51,lng:10,owner:null,troops:0,moved:false,neighbors:[6,7,9]},
-  {id:9,name:'Italy',lat:42,lng:12,owner:null,troops:0,moved:false,neighbors:[7,8,10]},
-  {id:10,name:'Egypt',lat:26,lng:31,owner:null,troops:0,moved:false,neighbors:[9,11]},
-  {id:11,name:'South Africa',lat:-30,lng:25,owner:null,troops:0,moved:false,neighbors:[10]},
-  {id:12,name:'Russia',lat:60,lng:90,owner:null,troops:0,moved:false,neighbors:[13,0]},
-  {id:13,name:'China',lat:35,lng:104,owner:null,troops:0,moved:false,neighbors:[12,14,15,16]},
-  {id:14,name:'India',lat:21,lng:78,owner:null,troops:0,moved:false,neighbors:[13]},
-  {id:15,name:'Japan',lat:36,lng:138,owner:null,troops:0,moved:false,neighbors:[13]},
-  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:0,moved:false,neighbors:[17,13]},
-  {id:17,name:'New Zealand',lat:-41,lng:174,owner:null,troops:0,moved:false,neighbors:[16]},
-  {id:18,name:'Greenland',lat:72,lng:-40,owner:null,troops:0,moved:false,neighbors:[0,1]},
-  {id:19,name:'Iceland',lat:65,lng:-18,owner:null,troops:0,moved:false,neighbors:[1,6]},
-  {id:4,name:'Brasil',lat:-10,lng:-55,owner:null,troops:0,moved:false,neighbors:[2,3,5,11]}, // +11
-  {id:5,name:'Argentina',lat:-34,lng:-64,owner:null,troops:0,moved:false,neighbors:[4,11]}, // +11
-  {id:8,name:'Germany',lat:51,lng:10,owner:null,troops:0,moved:false,neighbors:[6,7,9,12]}, // +12
-  {id:10,name:'Egypt',lat:26,lng:31,owner:null,troops:0,moved:false,neighbors:[9,11,14]}, // +14
-  {id:11,name:'South Africa',lat:-30,lng:25,owner:null,troops:0,moved:false,neighbors:[10,16,4,5]}, // +16,+4,+5
-  {id:12,name:'Russia',lat:60,lng:90,owner:null,troops:0,moved:false,neighbors:[13,0,8]}, // +8
-  {id:14,name:'India',lat:21,lng:78,owner:null,troops:0,moved:false,neighbors:[13,10]}, // +10
-  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:0,moved:false,neighbors:[17,13,11]}, // +11
-  {id:18,name:'Greenland',lat:72,lng:-40,owner:null,troops:0,moved:false,neighbors:[0,1,19]}, // +19
-  {id:19,name:'Iceland',lat:65,lng:-18,owner:null,troops:0,moved:false,neighbors:[1,6,18]}, // +18
-  {id:10,name:'Egypt',lat:26,lng:31,owner:null,troops:0,moved:false,neighbors:[9,11,14]}, // ya tiene India (14)
-  {id:14,name:'India',lat:21,lng:78,owner:null,troops:0,moved:false,neighbors:[13,10,16]}, // +16 Australia
-  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:0,moved:false,neighbors:[17,13,11,14]}, // +14 India
-
-
+  {id:0,name:'Alaska',lat:64.2,lng:-149,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[1,18,12]},
+  {id:1,name:'Canada',lat:60,lng:-100,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[0,2,18,19]},
+  {id:2,name:'USA',lat:38,lng:-97,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[1,3,4]},
+  {id:3,name:'Mexico',lat:23,lng:-102,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[2,4]},
+  {id:4,name:'Brasil',lat:-10,lng:-55,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[2,3,5,11]},
+  {id:5,name:'Argentina',lat:-34,lng:-64,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[4,11]},
+  {id:6,name:'UK',lat:55,lng:-3,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[7,8,19]},
+  {id:7,name:'France',lat:46,lng:2,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[6,8,9]},
+  {id:8,name:'Germany',lat:51,lng:10,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[6,7,9,12]},
+  {id:9,name:'Italy',lat:42,lng:12,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[7,8,10]},
+  {id:10,name:'Egypt',lat:26,lng:31,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[9,11,14]},
+  {id:11,name:'South Africa',lat:-30,lng:25,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[10,16,4,5]},
+  {id:12,name:'Russia',lat:60,lng:90,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[13,0,8]},
+  {id:13,name:'China',lat:35,lng:104,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[12,14,15,16]},
+  {id:14,name:'India',lat:21,lng:78,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[13,10,16]},
+  {id:15,name:'Japan',lat:36,lng:138,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[13]},
+  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[17,13,11,14]},
+  {id:17,name:'New Zealand',lat:-41,lng:174,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[16]},
+  {id:18,name:'Greenland',lat:72,lng:-40,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[0,1,19]},
+  {id:19,name:'Iceland',lat:65,lng:-18,owner:null,troops:{infantry:0,cavalry:0,archer:0},moved:false,neighbors:[1,6,18]},
 ];
 
 // --- Jugadores ---
@@ -129,10 +154,10 @@ let available = [...Array(territories.length).keys()];
 for(let p=0;p<NUM_FACTIONS;p++){
   let idx = available.splice(Math.floor(Math.random()*available.length),1)[0];
   territories[idx].owner = p;
-  territories[idx].troops = 1;
+  territories[idx].troops.infantry = 1; // Inicio con infantería
 }
 
-// --- Crear markers y labels debajo ---
+// --- Crear markers y labels ---
 territories.forEach(t=>{
   t.marker = L.circleMarker([t.lat,t.lng],{
     radius:20,
@@ -144,11 +169,16 @@ territories.forEach(t=>{
   t.label = L.marker([t.lat,t.lng+2],{
     icon:L.divIcon({
       className:'territory-label',
-      html:`<div style="color:#fff;text-align:center;font-size:12px"><div>${t.name}<br>${t.troops}</div></div>`
+      html:`<div style="color:#fff;text-align:center;"><div>${t.name}<br>${getTotalTroops(t)} (${t.troops.infantry}I, ${t.troops.cavalry}C, ${t.troops.archer}A)</div></div>`
     })
   }).addTo(map);
   t.marker.on('click',()=>selectTerritory(t));
 });
+
+// --- Obtener total tropas ---
+function getTotalTroops(t){
+  return t.troops.infantry + t.troops.cavalry + t.troops.archer;
+}
 
 // --- Actualizar labels y colores ---
 function refreshMarkers(){
@@ -156,12 +186,12 @@ function refreshMarkers(){
     t.marker.setStyle({
       fillColor:t.owner!==null?colors[t.owner]:'#555',
       opacity:t.moved?0.5:1,
-      weight:(selected&&t.id===selected.id)?3:2,
+      weight:(selected&&t.id===selected.id)?4:2,
       color:(selected&&t.id===selected.id)?'red':'black'
     });
     t.label.setIcon(L.divIcon({
       className:'territory-label',
-      html:`<div style="color:#fff;text-align:center;font-size:12px"><div>${t.name}<br>${t.troops}</div></div>`
+      html:`<div style="color:#fff;text-align:center;"><div>${t.name}<br>${getTotalTroops(t)} (${t.troops.infantry}I, ${t.troops.cavalry}C, ${t.troops.archer}A)</div></div>`
     }));
   });
   if(selected){
@@ -193,7 +223,7 @@ function addLog(text){ const p=document.createElement('div'); p.textContent=text
 
 // --- Seleccionar territorio ---
 function selectTerritory(t){
-  if(t.owner!==current || t.moved || t.troops<1){ selected=null; target=null; actionMode=null; refreshMarkers(); return; }
+  if(t.owner!==current || t.moved || getTotalTroops(t)<1){ selected=null; target=null; actionMode=null; refreshMarkers(); return; }
   selected = t;
   highlightNeighbors(t);
   showActionModal();
@@ -245,14 +275,14 @@ function selectTarget(){
   });
 }
 
-// --- Modal cantidad ---
+// --- Modal cantidad (simplificada, pero podría expandirse para tipos) ---
 const qtyModal = document.getElementById('action-qty-modal');
 function showQuantityModal(){
-  const maxT = selected.troops-1;
+  const maxT = getTotalTroops(selected)-1;
   const input = document.getElementById('modal-number');
   input.max = maxT;
   input.value = Math.min(1,maxT);
-  document.getElementById('modal-qty-text').textContent=`Cantidad (máx ${maxT})`;
+  document.getElementById('modal-qty-text').textContent=`Cantidad (máx ${maxT}) - Se moverán tropas mixtas`;
   qtyModal.style.display='block';
 }
 document.getElementById('modal-qty-cancel').onclick=()=>{
@@ -269,43 +299,171 @@ document.getElementById('modal-qty-confirm').onclick=()=>{
   resetClickHandlers();
 };
 
-// --- Funciones mover y atacar ---
+// --- Mover tropas (proporcional por tipos) ---
 function moveTroops(from,to,qty){
-  from.troops-=qty; to.troops+=qty; from.moved=true;
+  const totalFrom = getTotalTroops(from);
+  if(qty > totalFrom - 1) qty = totalFrom - 1;
+  const ratio = qty / totalFrom;
+  Object.keys(troopTypes).forEach(type => {
+    const moveAmt = Math.floor(from.troops[type] * ratio);
+    from.troops[type] -= moveAmt;
+    to.troops[type] += moveAmt;
+  });
+  from.moved = true;
   addLog(`${players[current].name} mueve ${qty} tropas de ${from.name} a ${to.name}`);
   refreshMarkers();
 }
 
+// --- Batalla con modal y animación ---
+const battleModal = document.getElementById('battle-modal');
 function battle(attacker,defender,qty){
-  const atkDice = Array.from({length:qty},()=>Math.floor(Math.random()*6)+1).sort((a,b)=>b-a);
-  const defDice = Array.from({length:defender.troops},()=>Math.floor(Math.random()*6)+1).sort((a,b)=>b-a);
-  let atkLoss=0,defLoss=0;
-  for(let i=0;i<Math.min(atkDice.length,defDice.length);i++){
-    if(atkDice[i]>defDice[i]) defLoss++; else atkLoss++;
+  // Preparar tropas atacantes (proporcional)
+  const atkTroops = {};
+  const totalAtk = getTotalTroops(attacker);
+  const ratio = qty / totalAtk;
+  Object.keys(troopTypes).forEach(type => {
+    atkTroops[type] = Math.floor(attacker.troops[type] * ratio);
+    attacker.troops[type] -= atkTroops[type];
+  });
+
+  // Mostrar modal batalla
+  document.getElementById('battle-text').textContent = `Batalla: ${attacker.name} ataca ${defender.name}`;
+  const atkSide = document.getElementById('attacker-side');
+  const defSide = document.getElementById('defender-side');
+  atkSide.innerHTML = '<h4>Atacante</h4>';
+  defSide.innerHTML = '<h4>Defensor</h4>';
+  Object.keys(atkTroops).forEach(type => {
+    for(let i=0; i<atkTroops[type]; i++){
+      const unit = document.createElement('div');
+      unit.className = `battle-unit ${type}`;
+      atkSide.appendChild(unit);
+    }
+  });
+  Object.keys(defender.troops).forEach(type => {
+    for(let i=0; i<defender.troops[type]; i++){
+      const unit = document.createElement('div');
+      unit.className = `battle-unit ${type}`;
+      defSide.appendChild(unit);
+    }
+  });
+  battleModal.style.display = 'block';
+
+  // Simular batalla por rondas con delay
+  let atkUnits = [...atkSide.querySelectorAll('.battle-unit')];
+  let defUnits = [...defSide.querySelectorAll('.battle-unit')];
+  let atkLoss = 0, defLoss = 0;
+  const maxRounds = Math.min(atkUnits.length, defUnits.length);
+
+  function simulateRound(round) {
+    if(round >= maxRounds) {
+      // Finalizar batalla
+      defender.troops.infantry -= Math.min(defLoss, defender.troops.infantry);
+      defender.troops.cavalry -= Math.min(defLoss - defender.troops.infantry, defender.troops.cavalry);
+      defender.troops.archer -= defLoss - (defender.troops.infantry + defender.troops.cavalry);
+
+      let survivingAtk = qty - atkLoss;
+      if(defender.troops.infantry + defender.troops.cavalry + defender.troops.archer <= 0 && survivingAtk > 0){
+        defender.owner = current;
+        Object.keys(atkTroops).forEach(type => {
+          defender.troops[type] = Math.floor(survivingAtk * (atkTroops[type] / qty));
+        });
+        addLog(`${players[current].name} conquistó ${defender.name}!`);
+      }
+      document.getElementById('battle-result').textContent = `Atacante pierde ${atkLoss}, Defensor pierde ${defLoss}`;
+      attacker.moved = true;
+      refreshMarkers();
+      return;
+    }
+
+    // Calcular dados con bonos
+    const atkType = atkUnits[round].classList[1];
+    const defType = defUnits[round].classList[1];
+    let atkRoll = Math.floor(Math.random()*6)+1 + troopTypes[atkType].attack;
+    let defRoll = Math.floor(Math.random()*6)+1 + troopTypes[defType].defense + (fortifyActive[defender.id] || 0);
+    if(troopTypes[atkType].bonusVs === defType) atkRoll += 2;
+    if(troopTypes[defType].bonusVs === atkType) defRoll += 2;
+
+    // Animar dados
+    const atkDice = document.createElement('span');
+    atkDice.className = 'dice-roll';
+    atkDice.textContent = atkRoll;
+    atkSide.appendChild(atkDice);
+    const defDice = document.createElement('span');
+    defDice.className = 'dice-roll';
+    defDice.textContent = defRoll;
+    defSide.appendChild(defDice);
+
+    setTimeout(() => {
+      if(atkRoll > defRoll){
+        defUnits[round].classList.add('defeated');
+        defLoss++;
+      } else {
+        atkUnits[round].classList.add('defeated');
+        atkLoss++;
+      }
+      setTimeout(() => simulateRound(round + 1), 800);
+    }, 800);
   }
-  attacker.troops-=qty; // Restar las tropas enviadas a atacar
-  defender.troops-=defLoss;
-  let resultText=`Ataca ${attacker.name} -> ${defender.name}\nAtacante pierde ${atkLoss}, Defensor pierde ${defLoss}\n`;
-  if(defender.troops<=0 && (qty-atkLoss)>0){
-    defender.owner=current; defender.troops=qty-atkLoss; attacker.moved=true;
-    alert(`${players[current].name} conquistó ${defender.name}!`);
-    resultText+=`${players[current].name} conquistó ${defender.name}!`;
-  }
-  alert(resultText);
-  addLog(resultText);
-  refreshMarkers();
+
+  simulateRound(0);
 }
 
-// --- Botones principales ---
+document.getElementById('battle-close').onclick = () => {
+  battleModal.style.display = 'none';
+  document.getElementById('attacker-side').innerHTML = '';
+  document.getElementById('defender-side').innerHTML = '';
+  document.getElementById('battle-result').textContent = '';
+};
+
+// --- Reclutar con modal tipos ---
+const recruitModal = document.getElementById('recruit-modal');
 document.getElementById('btn-recruit').onclick=()=>{
-  if(players[current].money<RECRUIT_COST){ alert('No hay dinero'); return;}
   alert('Selecciona un territorio para reclutar');
   territories.forEach(t=>{
     t.marker.off('click');
     t.marker.on('click',()=>{
       if(t.owner===current){
-        t.troops++; players[current].money-=RECRUIT_COST;
-        addLog(`${players[current].name} reclutó 1 tropa en ${t.name}`);
+        selected = t;
+        recruitModal.style.display = 'block';
+        resetClickHandlers();
+        refreshMarkers();
+      }
+    });
+  });
+};
+recruitModal.querySelectorAll('button[data-type]').forEach(btn => {
+  btn.onclick = () => {
+    const type = btn.dataset.type;
+    const cost = parseInt(btn.dataset.cost);
+    if(players[current].money >= cost){
+      selected.troops[type]++;
+      players[current].money -= cost;
+      addLog(`${players[current].name} reclutó 1 ${type} en ${selected.name}`);
+      recruitModal.style.display = 'none';
+      selected = null;
+      refreshMarkers();
+    } else {
+      alert('No hay suficiente dinero');
+    }
+  };
+});
+document.getElementById('recruit-cancel').onclick = () => {
+  recruitModal.style.display = 'none';
+  selected = null;
+  resetClickHandlers();
+};
+
+// --- Fortificar ---
+document.getElementById('btn-fortify').onclick=()=>{
+  if(players[current].money < FORTIFY_COST){ alert('No hay dinero'); return;}
+  alert('Selecciona un territorio para fortificar');
+  territories.forEach(t=>{
+    t.marker.off('click');
+    t.marker.on('click',()=>{
+      if(t.owner===current){
+        players[current].money -= FORTIFY_COST;
+        fortifyActive[t.id] = FORTIFY_BONUS;
+        addLog(`${players[current].name} fortificó ${t.name} (+${FORTIFY_BONUS} defensa este turno)`);
         resetClickHandlers();
         refreshMarkers();
       }
@@ -313,20 +471,22 @@ document.getElementById('btn-recruit').onclick=()=>{
   });
 };
 
+// --- Pasar turno ---
 document.getElementById('btn-pass').onclick=()=>{
   const income = territories.filter(t=>t.owner===current).length*INCOME_PER_TERR;
   players[current].money+=income;
   territories.filter(t=>t.owner===current).forEach(t=>t.moved=false);
+  fortifyActive = {}; // Reset fortificaciones
   addLog(`${players[current].name} termina turno. Recibió $${income}`);
   current=(current+1)%NUM_FACTIONS;
   refreshMarkers();
   if(players[current].isAI) runAI(players[current]);
 };
 
-// --- IA avanzada ---
+// --- IA avanzada (mejorada para tipos) ---
 function runAI(p){
-  // deshabilitar la UI del jugador humano mientras actúa la IA
   document.getElementById('btn-recruit').disabled = true;
+  document.getElementById('btn-fortify').disabled = true;
   document.getElementById('btn-pass').disabled = true;
 
   const myTerrs = territories.filter(t => t.owner === p.id && !t.moved);
@@ -334,15 +494,16 @@ function runAI(p){
 
   function nextAction(index){
     if(index >= myTerrs.length){
-      // turno IA finalizado: desbloquear jugador siguiente
       const income = territories.filter(t=>t.owner===p.id).length*INCOME_PER_TERR;
       p.money+=income;
       territories.filter(t=>t.owner===p.id).forEach(t=>t.moved=false);
+      fortifyActive = {};
       addLog(`${p.name} termina turno. Recibió $${income}`);
       current = (current + 1) % NUM_FACTIONS;
       refreshMarkers();
       if(!players[current].isAI){
         document.getElementById('btn-recruit').disabled = false;
+        document.getElementById('btn-fortify').disabled = false;
         document.getElementById('btn-pass').disabled = false;
       } else {
         runAI(players[current]);
@@ -352,22 +513,33 @@ function runAI(p){
 
     const t = myTerrs[index];
     setTimeout(()=>{
-      // Reclutar si hay dinero
-      if(p.money >= RECRUIT_COST){ 
-        t.troops++; 
-        p.money -= RECRUIT_COST; 
-        addLog(`${p.name} recluta 1 tropa en ${t.name}`);
+      // Reclutar aleatorio si hay dinero
+      if(p.money >= 100){ 
+        const types = Object.keys(troopTypes);
+        const type = types[Math.floor(Math.random() * types.length)];
+        const cost = troopTypes[type].cost;
+        if(p.money >= cost){
+          t.troops[type]++; 
+          p.money -= cost; 
+          addLog(`${p.name} recluta 1 ${type} en ${t.name}`);
+        }
+      }
+      // Fortificar si vulnerable
+      if(p.money >= FORTIFY_COST && Math.random() > 0.5){
+        p.money -= FORTIFY_COST;
+        fortifyActive[t.id] = FORTIFY_BONUS;
+        addLog(`${p.name} fortificó ${t.name}`);
       }
       // Atacar vecinos enemigos
       t.neighbors.forEach(nid=>{
-        const n = territories[nid];
-        if(n.owner!==p.id && t.troops>1){
-          battle(t, n, Math.min(3, t.troops-1));
+        const n = territories.find(ter => ter.id === nid);
+        if(n.owner!==p.id && getTotalTroops(t)>1){
+          battle(t, n, Math.min(3, getTotalTroops(t)-1));
         }
       });
       t.moved = true;
       refreshMarkers();
-      nextAction(index+1); // siguiente territorio
+      nextAction(index+1);
     }, delay);
     delay = 1000 + Math.random()*500;
   }
