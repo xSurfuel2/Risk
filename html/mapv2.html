@@ -249,6 +249,25 @@ body, html {
   box-shadow: 0 0 20px rgba(202,164,59,0.5);
 }
 
+/* Panel de información de tropas */
+#troop-info-panel {
+  margin: 15px 0;
+  padding: 15px;
+  background: rgba(0,0,0,0.4);
+  border-radius: 8px;
+  border: 1px solid #caa43b;
+}
+
+#troop-info-panel h4 {
+  margin-top: 0;
+  text-align: center;
+}
+
+.troop-bonus {
+  margin: 5px 0;
+  font-size: 12px;
+}
+
 /* Arena de batalla mejorada */
 #battle-arena { 
   margin: 20px 0; 
@@ -357,7 +376,7 @@ body, html {
   background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23caa43b"><rect x="6" y="4" width="12" height="16" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M8 2h8M8 22h8M4 12h4m8 0h4"/></svg>'); 
 }
 
-/* Dados 3D mejorados */
+/* Dados 3D mejorados con caras completas */
 .dice-container { 
   margin: 15px 0; 
   display: flex; 
@@ -377,12 +396,9 @@ body, html {
   position: relative; 
   width: 100%; 
   height: 100%; 
+  transform-style: preserve-3d;
   transition: transform 1s; 
-  transform-style: preserve-3d; 
-  background: linear-gradient(145deg, #8b0000, #660000);
-  border: 3px solid #caa43b; 
-  border-radius: 10px;
-  box-shadow: 0 0 20px rgba(139,0,0,0.8), inset 0 0 10px rgba(0,0,0,0.5);
+  animation: diceRoll 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55); 
 }
 
 .dice-face { 
@@ -399,7 +415,15 @@ body, html {
   font-weight: bold;
   color: #fff;
   text-shadow: 0 0 10px #caa43b;
+  backface-visibility: hidden;
 }
+
+.dice-face.front { transform: translateZ(25px); }
+.dice-face.back { transform: rotateY(180deg) translateZ(25px); }
+.dice-face.right { transform: rotateY(90deg) translateZ(25px); }
+.dice-face.left { transform: rotateY(-90deg) translateZ(25px); }
+.dice-face.top { transform: rotateX(90deg) translateZ(25px); }
+.dice-face.bottom { transform: rotateX(-90deg) translateZ(25px); }
 
 .dice.rolling .dice-inner { 
   animation: diceRoll 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55); 
@@ -636,6 +660,13 @@ body, html {
     <button id="btn-hero">⭐ Héroe</button>
     <button id="btn-pass">➡ Pasar turno</button>
   </div>
+  <div id="troop-info-panel">
+    <h4>📖 Bonos de Tropas</h4>
+    <div class="troop-bonus">🗡 Infantería: Ataque 1, Defensa 1, Bueno vs Arqueros</div>
+    <div class="troop-bonus">🐎 Caballería: Ataque 2, Defensa 0.5, Bueno vs Infantería</div>
+    <div class="troop-bonus">🏹 Arqueros: Ataque 0.5, Defensa 2, Bueno vs Caballería</div>
+    <div class="troop-bonus">🏰 Asedio: Ataque 3, Defensa 1, Sin bono específico</div>
+  </div>
   <h4>📜 Registro</h4>
   <div id="log"></div>
 </div>
@@ -760,13 +791,15 @@ let stats = {
   totalTurns: 0
 };
 
-// Sistema de héroes
+// Sistema de héroes con más habilidades
 const heroes = {
   warrior: {
     name: 'Guerrero',
     abilities: [
       { name: 'Furia de Batalla', desc: '+2 ataque por 1 turno', cooldown: 0, maxCooldown: 3 },
-      { name: 'Grito de Guerra', desc: 'Duplica tropas de 1 territorio', cooldown: 0, maxCooldown: 5 }
+      { name: 'Grito de Guerra', desc: 'Duplica tropas de 1 territorio', cooldown: 0, maxCooldown: 5 },
+      { name: 'Escudo Divino', desc: '+3 defensa en un territorio por 2 turnos', cooldown: 0, maxCooldown: 4 },
+      { name: 'Asalto Rápido', desc: 'Ataca sin costo de movimiento', cooldown: 0, maxCooldown: 6 }
     ]
   }
 };
@@ -775,40 +808,40 @@ let playerHero = { ...heroes.warrior };
 
 // Tipos de tropas
 const troopTypes = {
-  infantry: { cost: 100, attack: 1, defense: 1, bonusVs: 'archer', rank: 4 },
-  cavalry: { cost: 150, attack: 2, defense: 0.5, bonusVs: 'infantry', rank: 3 },
-  archer: { cost: 120, attack: 0.5, defense: 2, bonusVs: 'cavalry', rank: 2 },
-  siege: { cost: 200, attack: 3, defense: 1, bonusVs: null, rank: 1 }
+  infantry: { cost: 100, attack: 1, defense: 1, bonusVs: 'archer', rank: 4, icon: '🗡' },
+  cavalry: { cost: 150, attack: 2, defense: 0.5, bonusVs: 'infantry', rank: 3, icon: '🐎' },
+  archer: { cost: 120, attack: 0.5, defense: 2, bonusVs: 'cavalry', rank: 2, icon: '🏹' },
+  siege: { cost: 200, attack: 3, defense: 1, bonusVs: null, rank: 1, icon: '🏰' }
 };
 
 // Territorios
 const territories = [
-  {id:0,name:'Alaska',lat:64.2,lng:-149,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,18,12],isCastle:false},
-  {id:1,name:'Canadá',lat:60,lng:-100,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[0,2,18,19],isCastle:false},
-  {id:2,name:'USA',lat:38,lng:-97,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,3,4],isCastle:false},
-  {id:3,name:'México',lat:23,lng:-102,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[2,4],isCastle:false},
-  {id:4,name:'Brasil',lat:-10,lng:-55,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[2,3,5,11],isCastle:false},
-  {id:5,name:'Argentina',lat:-34,lng:-64,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[4,11],isCastle:false},
-  {id:6,name:'Reino Unido',lat:55,lng:-3,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[7,8,19],isCastle:false},
-  {id:7,name:'Francia',lat:46,lng:2,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[6,8,9],isCastle:false},
-  {id:8,name:'Alemania',lat:51,lng:10,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[6,7,9,12],isCastle:false},
-  {id:9,name:'Italia',lat:42,lng:12,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[7,8,10],isCastle:false},
-  {id:10,name:'Egipto',lat:26,lng:31,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[9,11,14],isCastle:false},
-  {id:11,name:'Sudáfrica',lat:-30,lng:25,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[10,16,4,5],isCastle:false},
-  {id:12,name:'Rusia',lat:60,lng:90,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13,0,8],isCastle:false},
-  {id:13,name:'China',lat:35,lng:104,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[12,14,15,16],isCastle:false},
-  {id:14,name:'India',lat:21,lng:78,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13,10,16],isCastle:false},
-  {id:15,name:'Japón',lat:36,lng:138,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13],isCastle:false},
-  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[17,13,11,14],isCastle:false},
-  {id:17,name:'Nueva Zelanda',lat:-41,lng:174,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[16],isCastle:false},
-  {id:18,name:'Groenlandia',lat:72,lng:-40,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[0,1,19],isCastle:false},
-  {id:19,name:'Islandia',lat:65,lng:-18,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,6,18],isCastle:false},
+  {id:0,name:'Alaska',lat:64.2,lng:-149,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,18,12],isCastle:false,level:1,questActive:false},
+  {id:1,name:'Canadá',lat:60,lng:-100,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[0,2,18,19],isCastle:false,level:1,questActive:false},
+  {id:2,name:'USA',lat:38,lng:-97,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,3,4],isCastle:false,level:1,questActive:false},
+  {id:3,name:'México',lat:23,lng:-102,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[2,4],isCastle:false,level:1,questActive:false},
+  {id:4,name:'Brasil',lat:-10,lng:-55,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[2,3,5,11],isCastle:false,level:1,questActive:false},
+  {id:5,name:'Argentina',lat:-34,lng:-64,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[4,11],isCastle:false,level:1,questActive:false},
+  {id:6,name:'Reino Unido',lat:55,lng:-3,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[7,8,19],isCastle:false,level:1,questActive:false},
+  {id:7,name:'Francia',lat:46,lng:2,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[6,8,9],isCastle:false,level:1,questActive:false},
+  {id:8,name:'Alemania',lat:51,lng:10,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[6,7,9,12],isCastle:false,level:1,questActive:false},
+  {id:9,name:'Italia',lat:42,lng:12,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[7,8,10],isCastle:false,level:1,questActive:false},
+  {id:10,name:'Egipto',lat:26,lng:31,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[9,11,14],isCastle:false,level:1,questActive:false},
+  {id:11,name:'Sudáfrica',lat:-30,lng:25,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[10,16,4,5],isCastle:false,level:1,questActive:false},
+  {id:12,name:'Rusia',lat:60,lng:90,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13,0,8],isCastle:false,level:1,questActive:false},
+  {id:13,name:'China',lat:35,lng:104,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[12,14,15,16],isCastle:false,level:1,questActive:false},
+  {id:14,name:'India',lat:21,lng:78,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13,10,16],isCastle:false,level:1,questActive:false},
+  {id:15,name:'Japón',lat:36,lng:138,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13],isCastle:false,level:1,questActive:false},
+  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[17,13,11,14],isCastle:false,level:1,questActive:false},
+  {id:17,name:'Nueva Zelanda',lat:-41,lng:174,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[16],isCastle:false,level:1,questActive:false},
+  {id:18,name:'Groenlandia',lat:72,lng:-40,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[0,1,19],isCastle:false,level:1,questActive:false},
+  {id:19,name:'Islandia',lat:65,lng:-18,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,6,18],isCastle:false,level:1,questActive:false},
 ];
 
 // Jugadores
 const players = [];
 for(let i=0; i<NUM_FACTIONS; i++){
-  players.push({id:i, name:i===PLAYER_ID?'👑 Tú':'🤖 IA '+i, money:START_MONEY, isAI:i!==PLAYER_ID});
+  players.push({id:i, name:i===PLAYER_ID?'👑 Tú':'🤖 IA '+i, money:START_MONEY, isAI:i!==PLAYER_ID, xp:0, level:1});
 }
 
 // Mapa Leaflet
@@ -821,8 +854,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 5,
   minZoom: 2
 }).addTo(map);
-
-
 
 // Asignar territorios iniciales
 let available = [...Array(territories.length).keys()];
@@ -853,24 +884,35 @@ territories.forEach(t=>{
   t.label = L.marker([t.lat,t.lng+3], {
     icon: L.divIcon({
       className: 'territory-label',
-      html: `<div style="color:#fff;text-align:center;"><div>${t.name}${t.isCastle ? ' 🏰' : ''}<br>💂 ${getTotalTroops(t)}</div></div>`
+      html: getTerritoryLabel(t)
     })
   }).addTo(map);
   
   t.marker.on('click', () => selectTerritory(t));
 });
 
+function getTerritoryLabel(t) {
+  let troopsHtml = '';
+  Object.keys(t.troops).forEach(type => {
+    if (t.troops[type] > 0) {
+      troopsHtml += `${troopTypes[type].icon}${t.troops[type]} `;
+    }
+  });
+  return `<div style="color:#fff;text-align:center;"><div>${t.name}${t.isCastle ? ' 🏰' : ''}${t.questActive ? ' 📜' : ''}<br>${troopsHtml}</div></div>`;
+}
+
 function getTotalTroops(t) {
   return Object.values(t.troops).reduce((a, b) => a + b, 0);
 }
 
-// Sistema de clima
-const weatherTypes = ['clear', 'rain', 'snow', 'fog'];
+// Sistema de clima con más efectos
+const weatherTypes = ['clear', 'rain', 'snow', 'fog', 'storm'];
 const weatherEffects = {
-  clear: { name: '☀ Despejado', attackMod: 0, defenseMod: 0 },
-  rain: { name: '🌧 Lluvia', attackMod: -1, defenseMod: +1 },
-  snow: { name: '❄ Nieve', attackMod: -2, defenseMod: 0 },
-  fog: { name: '🌫 Niebla', attackMod: -1, defenseMod: -1 }
+  clear: { name: '☀ Despejado', attackMod: 0, defenseMod: 0, special: null },
+  rain: { name: '🌧 Lluvia', attackMod: -1, defenseMod: +1, special: 'reduce cavalry speed' },
+  snow: { name: '❄ Nieve', attackMod: -2, defenseMod: 0, special: 'freeze archers' },
+  fog: { name: '🌫 Niebla', attackMod: -1, defenseMod: -1, special: 'hidden ambushes' },
+  storm: { name: '⛈ Tormenta', attackMod: -2, defenseMod: -2, special: 'lightning strikes random units' }
 };
 
 function changeWeather() {
@@ -905,10 +947,16 @@ function createWeatherEffect() {
       flake.style.animationDelay = Math.random() * 5 + 's';
       overlay.appendChild(flake);
     }
+  } else if(weather === 'storm') {
+    // Añadir efectos de tormenta, por ejemplo relámpagos
+    setInterval(() => {
+      overlay.style.background = 'rgba(255,255,255,0.5)';
+      setTimeout(() => overlay.style.background = 'transparent', 100);
+    }, Math.random() * 5000 + 2000);
   }
 }
 
-// Sistema de eventos aleatorios
+// Sistema de eventos aleatorios con más variedad
 function triggerRandomEvent() {
   if(Math.random() > 0.3) return; // 30% de probabilidad
   
@@ -954,6 +1002,26 @@ function triggerRandomEvent() {
           addLog(`🎖 Refuerzos llegan a ${t.name}!`);
         }
       }
+    },
+    {
+      title: '📜 ¡MISIÓN LEGENDARIA!',
+      desc: 'Una quest aparece en un territorio',
+      effect: () => {
+        const t = territories[Math.floor(Math.random() * territories.length)];
+        t.questActive = true;
+        addLog(`📜 ¡Quest en ${t.name}! Conquista para recompensa`);
+      }
+    },
+    {
+      title: '🔥 ¡INCENDIO FORESTAL!',
+      desc: 'Fuego destruye tropas en un territorio',
+      effect: () => {
+        const t = territories[Math.floor(Math.random() * territories.length)];
+        Object.keys(t.troops).forEach(type => {
+          if (type === 'archer') t.troops[type] = Math.floor(t.troops[type] * 0.7);
+        });
+        addLog(`🔥 Incendio en ${t.name}! Arqueros afectados`);
+      }
     }
   ];
   
@@ -972,6 +1040,25 @@ function showEventNotification(event) {
     notif.classList.remove('show');
     refreshMarkers();
   };
+}
+
+// Completar quest al conquistar
+function completeQuest(t) {
+  if (t.questActive) {
+    t.questActive = false;
+    players[current].xp += 100;
+    players[current].money += 200;
+    addLog(`📜 ¡Quest completada en ${t.name}! +100 XP +200$`);
+    checkPlayerLevelUp();
+  }
+}
+
+function checkPlayerLevelUp() {
+  if (players[PLAYER_ID].xp >= players[PLAYER_ID].level * 200) {
+    players[PLAYER_ID].level++;
+    players[PLAYER_ID].xp = 0;
+    addLog(`⭐ ¡Subiste de nivel a ${players[PLAYER_ID].level}! +10% ingresos`);
+  }
 }
 
 // Sistema de partículas
@@ -1014,7 +1101,7 @@ function refreshMarkers() {
     
     t.label.setIcon(L.divIcon({
       className: 'territory-label',
-      html: `<div style="color:#fff;text-align:center;"><div>${t.name}${t.isCastle ? ' 🏰' : ''}<br>💂 ${getTotalTroops(t)}</div></div>`
+      html: getTerritoryLabel(t)
     }));
   });
   
@@ -1031,7 +1118,7 @@ function refreshMarkers() {
   checkAchievements();
 }
 
-// Render jugadores
+// Render jugadores con nivel y XP
 function renderPlayers() {
   const playersEl = document.getElementById('players-list');
   playersEl.innerHTML = '';
@@ -1042,11 +1129,12 @@ function renderPlayers() {
     div.innerHTML = `
       <div>
         <span class="player-color" style="background:${colors[p.id]}"></span>
-        ${p.name}
+        ${p.name} (Lvl ${p.level})
       </div>
       <div>
         💰 ${p.money}<br>
-        🗺 ${terrCount} terr.
+        🗺 ${terrCount} terr.<br>
+        ⭐ XP: ${p.xp}
       </div>
     `;
     playersEl.appendChild(div);
@@ -1128,6 +1216,18 @@ function useHeroAbility(index) {
       addLog(`⚡ Grito de Guerra en ${t.name}! Tropas duplicadas!`);
       ability.cooldown = ability.maxCooldown;
     }
+  } else if(index === 2) { // Escudo Divino
+    const myTerrs = territories.filter(t => t.owner === PLAYER_ID);
+    if(myTerrs.length > 0) {
+      const t = myTerrs[Math.floor(Math.random() * myTerrs.length)];
+      fortifyActive[t.id] = (fortifyActive[t.id] || 0) + 3;
+      addLog(`🛡 Escudo Divino en ${t.name}! +3 defensa`);
+      ability.cooldown = ability.maxCooldown;
+    }
+  } else if(index === 3) { // Asalto Rápido
+    addLog(`⚡ Usaste: ${ability.name}! Ataque sin movimiento`);
+    ability.cooldown = ability.maxCooldown;
+    // Efecto aplicado en batalla: no marca como moved
   }
   
   renderHeroAbilities();
@@ -1273,7 +1373,7 @@ function moveTroops(from, to, qty) {
   refreshMarkers();
 }
 
-// Batalla épica
+// Batalla épica con bonos vs
 const battleModal = document.getElementById('battle-modal');
 const retreatModal = document.getElementById('retreat-modal');
 
@@ -1340,6 +1440,7 @@ function battle(attacker, defender, qty) {
         if(wasEnemy) {
           stats.territoriesConquered++;
           stats.battlesWon++;
+          completeQuest(defender);
         }
         addLog(`🎉 ${players[current].name} conquistó ${defender.name}!`);
       }
@@ -1398,23 +1499,31 @@ function battle(attacker, defender, qty) {
       heroBonus = 2;
     }
     
-    // Simular dados atacante
+    // Simular dados atacante con bonos vs
     for(let i=0; i<atkInRank; i++) {
       let roll = Math.floor(Math.random()*6) + 1;
       let hitThreshold = rank === 2 ? 5 : 4;
       hitThreshold += weatherMod.attackMod;
       atkRolls.push(roll);
-      if(roll >= hitThreshold) atkHits++;
+      if(roll >= hitThreshold) {
+        atkHits++;
+        // Bono vs
+        if (atkTroops[troopTypes.bonusVs] > 0) atkHits += 0.5; // Bono adictivo
+      }
     }
     atkHits += heroBonus;
     
-    // Simular dados defensor
+    // Simular dados defensor con bonos vs
     for(let i=0; i<defInRank; i++) {
       let roll = Math.floor(Math.random()*6) + 1;
       let hitThreshold = rank === 2 ? 5 : 4;
       hitThreshold += weatherMod.defenseMod;
       defRolls.push(roll);
-      if(roll >= hitThreshold) defHits++;
+      if(roll >= hitThreshold) {
+        defHits++;
+        // Bono vs
+        if (defTroops[troopTypes.bonusVs] > 0) defHits += 0.5;
+      }
     }
     
     // Bonus fortificación
@@ -1437,7 +1546,18 @@ function battle(attacker, defender, qty) {
       castleRerollUsed = true;
     }
     
-    // Mostrar dados con animación
+    // Efecto especial de clima en tormenta: golpe aleatorio
+    if (weather === 'storm' && Math.random() > 0.7) {
+      if (Math.random() > 0.5) {
+        atkHits -= 1;
+        addLog('⛈ ¡Relámpago golpea al atacante!');
+      } else {
+        defHits -= 1;
+        addLog('⛈ ¡Relámpago golpea al defensor!');
+      }
+    }
+    
+    // Mostrar dados con animación 3D completa
     atkDiceDiv.innerHTML = '';
     defDiceDiv.innerHTML = '';
     
@@ -1447,6 +1567,11 @@ function battle(attacker, defender, qty) {
       dice.innerHTML = `
         <div class="dice-inner">
           <div class="dice-face front">${roll}</div>
+          <div class="dice-face back">${7 - roll}</div>
+          <div class="dice-face right">3</div>
+          <div class="dice-face left">4</div>
+          <div class="dice-face top">5</div>
+          <div class="dice-face bottom">2</div>
         </div>
       `;
       atkDiceDiv.appendChild(dice);
@@ -1458,6 +1583,11 @@ function battle(attacker, defender, qty) {
       dice.innerHTML = `
         <div class="dice-inner">
           <div class="dice-face front">${roll}</div>
+          <div class="dice-face back">${7 - roll}</div>
+          <div class="dice-face right">3</div>
+          <div class="dice-face left">4</div>
+          <div class="dice-face top">5</div>
+          <div class="dice-face bottom">2</div>
         </div>
       `;
       defDiceDiv.appendChild(dice);
@@ -1563,7 +1693,6 @@ document.getElementById('btn-fortify').onclick = () => {
   if(players[current].money < FORTIFY_COST) {
     alert(`💰 Necesitas ${FORTIFY_COST}`);
     return;
-    return;
   }
   addLog('📍 Selecciona un territorio para fortificar');
   territories.forEach(t => {
@@ -1594,7 +1723,8 @@ document.getElementById('btn-pass').onclick = () => {
 };
 
 function endTurn() {
-  const income = territories.filter(t => t.owner === current).length * INCOME_PER_TERR;
+  let income = territories.filter(t => t.owner === current).length * INCOME_PER_TERR;
+  income *= (1 + (players[current].level - 1) * 0.1); // Bono por nivel
   players[current].money += income;
   territories.filter(t => t.owner === current).forEach(t => t.moved = false);
   fortifyActive = {};
@@ -1832,7 +1962,9 @@ const tips = [
   '💡 Acumula dinero para reclutar tropas de élite',
   '💡 Los castillos dan ventaja defensiva con reroll',
   '💡 Atajos: R=Reclutar, F=Fortificar, H=Héroe, Espacio=Pasar',
-  '💡 Conquista territorios para aumentar tus ingresos'
+  '💡 Conquista territorios para aumentar tus ingresos',
+  '💡 Completa quests para XP y oro extra',
+  '💡 Sube de nivel para bonos permanentes'
 ];
 
 let tipIndex = 0;
