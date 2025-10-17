@@ -1,0 +1,2240 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RISK Medieval — Total War Edition</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body, html { 
+  height: 100%; 
+  font-family: 'MedievalSharp', Arial, sans-serif; 
+  overflow: hidden;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+}
+
+#map { 
+  height: 100%; 
+  filter: brightness(0.85) contrast(1.2) saturate(1.1);
+}
+
+/* Overlays y efectos ambientales */
+#weather-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 500;
+}
+
+.rain-drop {
+  position: absolute;
+  width: 2px;
+  height: 25px;
+  background: linear-gradient(transparent, rgba(174, 194, 224, 0.7));
+  animation: fall linear infinite;
+}
+
+@keyframes fall {
+  to { transform: translateY(100vh); }
+}
+
+.snow-flake {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 0 5px white;
+  animation: snowfall linear infinite;
+}
+
+@keyframes snowfall {
+  to { transform: translateY(100vh) rotate(360deg); }
+}
+
+/* Panel principal izquierdo */
+#sidebar {
+  position: fixed; 
+  top: 10px; 
+  left: 10px; 
+  width: 420px; 
+  max-height: 95%; 
+  background: linear-gradient(145deg, rgba(10,10,20,0.97), rgba(30,15,15,0.97));
+  padding: 18px; 
+  border-radius: 14px; 
+  color: #fff; 
+  overflow-y: auto; 
+  overflow-x: hidden;
+  z-index: 1000;
+  box-shadow: 0 10px 40px rgba(202, 164, 59, 0.4), inset 0 0 30px rgba(0,0,0,0.5);
+  border: 3px solid rgba(202, 164, 59, 0.6);
+  backdrop-filter: blur(10px);
+}
+
+#sidebar::-webkit-scrollbar { width: 10px; }
+#sidebar::-webkit-scrollbar-track { background: rgba(0,0,0,0.4); border-radius: 10px; }
+#sidebar::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #caa43b, #8b7320); border-radius: 10px; }
+
+.tab-container {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 15px;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 8px;
+  background: rgba(0,0,0,0.5);
+  border: 2px solid #caa43b;
+  color: #caa43b;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.tab-btn.active {
+  background: linear-gradient(145deg, #caa43b, #8b7320);
+  color: #000;
+  box-shadow: 0 0 15px rgba(202, 164, 59, 0.8);
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+  animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.player-item { 
+  padding: 12px; 
+  margin: 8px 0; 
+  border-radius: 10px; 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center;
+  background: linear-gradient(145deg, rgba(0,0,0,0.4), rgba(20,20,20,0.4));
+  transition: all 0.3s;
+  border-left: 4px solid transparent;
+}
+
+.player-item:hover {
+  transform: translateX(8px);
+  background: linear-gradient(145deg, rgba(202, 164, 59, 0.2), rgba(139, 115, 32, 0.2));
+  border-left-color: #caa43b;
+}
+
+.player-color { 
+  width: 28px; 
+  height: 28px; 
+  border-radius: 50%; 
+  margin-right: 12px; 
+  display: inline-block;
+  box-shadow: 0 0 15px currentColor, inset 0 0 10px rgba(255,255,255,0.3);
+  animation: pulse 2.5s infinite;
+  border: 2px solid rgba(255,255,255,0.3);
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 15px currentColor; }
+  50% { transform: scale(1.15); box-shadow: 0 0 25px currentColor; }
+}
+
+.player-item.current { 
+  box-shadow: inset 0 0 0 3px #caa43b, 0 0 20px rgba(202, 164, 59, 0.6);
+  background: linear-gradient(145deg, rgba(202, 164, 59, 0.3), rgba(139, 115, 32, 0.3));
+  animation: glow 1.5s infinite;
+  border-left-color: #ffd700;
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: inset 0 0 0 3px #caa43b, 0 0 20px rgba(202, 164, 59, 0.5); }
+  50% { box-shadow: inset 0 0 0 3px #ffd700, 0 0 35px rgba(255, 215, 0, 0.8); }
+}
+
+.controls { 
+  margin: 15px 0; 
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.panel-toggles {
+  margin: 8px 0 0 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.hidden-panel {
+  display: none !important;
+}
+
+.controls button, .panel-toggles button { 
+  padding: 12px 18px; 
+  border: none; 
+  border-radius: 10px; 
+  cursor: pointer; 
+  background: linear-gradient(145deg, #3a3a3a, #1a1a1a);
+  color: #caa43b; 
+  transition: all 0.3s;
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 13px;
+  box-shadow: 0 5px 10px rgba(0,0,0,0.4);
+  border: 2px solid rgba(202, 164, 59, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.controls button::before, .panel-toggles button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(202, 164, 59, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.controls button:hover::before, .panel-toggles button:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.controls button:hover, .panel-toggles button:hover { 
+  background: linear-gradient(145deg, #5a5a5a, #2a2a2a);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(202, 164, 59, 0.5);
+  border-color: #caa43b;
+}
+
+.controls button:active, .panel-toggles button:active {
+  transform: translateY(0);
+}
+
+.controls button:disabled, .panel-toggles button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+#log { 
+  margin-top: 15px; 
+  max-height: 220px; 
+  overflow-y: auto; 
+  background: rgba(0,0,0,0.5); 
+  padding: 12px; 
+  font-size: 11px; 
+  border-radius: 10px;
+  border: 2px solid rgba(202, 164, 59, 0.4);
+  box-shadow: inset 0 0 15px rgba(0,0,0,0.5);
+}
+
+#log::-webkit-scrollbar { width: 8px; }
+#log::-webkit-scrollbar-thumb { background: #caa43b; border-radius: 10px; }
+
+#log div {
+  padding: 6px;
+  margin: 3px 0;
+  border-left: 3px solid #caa43b;
+  padding-left: 10px;
+  animation: slideIn 0.4s;
+  background: rgba(202, 164, 59, 0.05);
+  border-radius: 4px;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(-30px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Modales épicos */
+.modal {
+  display: none; 
+  position: fixed; 
+  top: 50%; 
+  left: 50%; 
+  transform: translate(-50%,-50%);
+  background: linear-gradient(145deg, rgba(10,10,20,0.98), rgba(30,15,15,0.98));
+  padding: 30px; 
+  border-radius: 18px; 
+  z-index: 2000;
+  color: #caa43b; 
+  width: 450px; 
+  text-align: center; 
+  box-shadow: 0 0 60px rgba(202,164,59,0.7), inset 0 0 30px rgba(202,164,59,0.1);
+  border: 4px solid rgba(202, 164, 59, 0.9);
+  animation: modalPop 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  backdrop-filter: blur(10px);
+}
+
+@keyframes modalPop {
+  from { transform: translate(-50%,-50%) scale(0.7) rotateY(90deg); opacity: 0; }
+  to { transform: translate(-50%,-50%) scale(1) rotateY(0deg); opacity: 1; }
+}
+
+.modal h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 28px;
+  text-shadow: 0 0 15px rgba(202,164,59,1), 0 0 30px rgba(202,164,59,0.5);
+  animation: titleGlow 2s infinite;
+}
+
+@keyframes titleGlow {
+  0%, 100% { text-shadow: 0 0 15px rgba(202,164,59,1); }
+  50% { text-shadow: 0 0 25px rgba(255,215,0,1), 0 0 40px rgba(202,164,59,0.8); }
+}
+
+.modal input { 
+  width: 92%; 
+  margin: 12px 0; 
+  padding: 12px; 
+  background: rgba(0,0,0,0.6); 
+  color: #fff; 
+  border: 3px solid #caa43b;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 16px;
+  transition: all 0.3s;
+}
+
+.modal input:focus {
+  outline: none;
+  border-color: #ffd700;
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+}
+
+.modal button { 
+  display: block; 
+  margin: 12px auto; 
+  width: 88%; 
+  padding: 14px; 
+  background: linear-gradient(145deg, #3a3a3a, #1a1a1a);
+  color: #caa43b; 
+  border: 3px solid #caa43b; 
+  border-radius: 10px; 
+  cursor: pointer; 
+  transition: all 0.3s;
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 15px;
+  position: relative;
+  overflow: hidden;
+}
+
+.modal button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transform: translateY(-50%);
+  transition: left 0.5s;
+}
+
+.modal button:hover::after {
+  left: 100%;
+}
+
+.modal button:hover { 
+  background: linear-gradient(145deg, #5a5a5a, #2a2a2a);
+  transform: scale(1.08);
+  box-shadow: 0 0 30px rgba(202,164,59,0.6);
+  border-color: #ffd700;
+}
+
+/* Arena de batalla ÉPICA */
+#battle-arena { 
+  margin: 25px 0; 
+  height: 380px; 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center;
+  background: 
+    linear-gradient(90deg, rgba(139,0,0,0.4) 0%, rgba(0,0,0,0.6) 50%, rgba(0,100,0,0.4) 100%),
+    url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(202,164,59,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+  border-radius: 14px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.8);
+  border: 3px solid rgba(202,164,59,0.5);
+}
+
+#battle-arena::before {
+  content: '⚔';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 120px;
+  opacity: 0.08;
+  animation: rotate 6s linear infinite;
+  text-shadow: 0 0 20px rgba(202,164,59,0.5);
+}
+
+@keyframes rotate {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.battle-side { 
+  width: 45%; 
+  text-align: center;
+  z-index: 1;
+}
+
+.battle-side h4 {
+  font-size: 18px;
+  margin-bottom: 10px;
+  text-shadow: 0 0 10px currentColor;
+}
+
+#battle-rank { 
+  font-size: 24px; 
+  margin: 18px 0; 
+  font-weight: bold;
+  text-shadow: 0 0 15px currentColor, 0 0 30px currentColor;
+  animation: rankPulse 1.2s infinite;
+  padding: 10px;
+  background: rgba(0,0,0,0.5);
+  border-radius: 10px;
+  border: 2px solid currentColor;
+}
+
+@keyframes rankPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+/* Unidades de batalla mejoradas con animaciones */
+.battle-unit { 
+  display: inline-block; 
+  margin: 6px; 
+  width: 55px; 
+  height: 55px; 
+  background-size: contain; 
+  background-repeat: no-repeat; 
+  background-position: center; 
+  transition: all 0.5s;
+  filter: drop-shadow(0 0 8px rgba(202,164,59,0.9));
+  animation: unitIdle 2.5s infinite;
+  position: relative;
+}
+
+.battle-unit::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 8px;
+  background: radial-gradient(ellipse, rgba(0,0,0,0.5), transparent);
+  border-radius: 50%;
+}
+
+@keyframes unitIdle {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-8px) rotate(2deg); }
+}
+
+.battle-unit.attacking {
+  animation: attack 0.8s;
+}
+
+@keyframes attack {
+  0% { transform: translateX(0) rotate(0deg) scale(1); }
+  30% { transform: translateX(15px) rotate(-15deg) scale(1.15); }
+  60% { transform: translateX(40px) rotate(25deg) scale(1.3); }
+  100% { transform: translateX(0) rotate(0deg) scale(1); }
+}
+
+.battle-unit.defending {
+  animation: defend 0.8s;
+}
+
+@keyframes defend {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  25% { transform: scale(0.85) translateY(8px) rotate(-10deg); }
+  75% { transform: scale(0.9) translateY(5px) rotate(10deg); }
+}
+
+.battle-unit.defeated { 
+  animation: defeated 1s forwards;
+}
+
+@keyframes defeated {
+  0% { transform: scale(1) rotate(0deg); opacity: 1; filter: drop-shadow(0 0 8px rgba(202,164,59,0.9)); }
+  50% { transform: scale(1.2) rotate(180deg); opacity: 0.5; filter: drop-shadow(0 0 15px rgba(255,0,0,0.9)); }
+  100% { transform: scale(0) rotate(360deg); opacity: 0; filter: grayscale(1) blur(3px); }
+}
+
+/* Sprites de unidades */
+.infantry { 
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23caa43b"><circle cx="12" cy="5" r="2.5"/><path d="M12 8.5c-3.5 0-5.5 2.5-5.5 5.5v9h2v-7h7v7h2v-9c0-3-2-5.5-5.5-5.5z"/><path d="M7 10l-2.5 5M17 10l2.5 5"/><rect x="10.5" y="12" width="3" height="8" fill="%23666"/></svg>'); 
+}
+
+.cavalry { 
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23caa43b"><path d="M20 8c0-2.5-1.5-3.5-2.5-3.5s-2.5 1.5-2.5 3.5v6l-4 2.5-4-2.5V8c0-2.5-1.5-3.5-2.5-3.5S2 5.5 2 8v12h2.5v-7l4 2.5v6h3v-6l4-2.5v7H18V8z"/><circle cx="12" cy="3" r="2.5"/><path d="M4 16c0 2 2 4 8 4s8-2 8-4" stroke="%23666" fill="none" stroke-width="1.5"/></svg>'); 
+}
+
+.archer { 
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23caa43b"><circle cx="12" cy="4.5" r="2.5"/><path d="M12 8c-2.5 0-3.5 1.5-3.5 3.5v10h2v-6h3v6h2v-10c0-2-1-3.5-3.5-3.5z"/><path d="M3 5l9 7m0-7l9 7M12 12v-5" stroke="%23caa43b" fill="none" stroke-width="1.5"/><path d="M20 8l-3 1" stroke="%23666" stroke-width="1"/></svg>'); 
+}
+
+.siege { 
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23caa43b"><rect x="5" y="3" width="14" height="18" rx="2.5" fill="%23666"/><circle cx="12" cy="12" r="4" fill="%23caa43b"/><path d="M7 1h10M7 23h10M3 12h4m10 0h4"/><rect x="10" y="10" width="4" height="4" fill="%23333"/></svg>'); 
+}
+
+/* Dados 3D ultra realistas */
+.dice-container { 
+  margin: 18px 0; 
+  display: flex; 
+  justify-content: center; 
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 60px;
+}
+
+.dice { 
+  width: 55px; 
+  height: 55px; 
+  perspective: 1200px; 
+  display: inline-block;
+}
+
+.dice-inner { 
+  position: relative; 
+  width: 100%; 
+  height: 100%; 
+  transform-style: preserve-3d;
+  transition: transform 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.dice.rolling .dice-inner { 
+  animation: diceRoll 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55); 
+}
+
+@keyframes diceRoll { 
+  0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+  20% { transform: rotateX(360deg) rotateY(180deg) rotateZ(90deg); }
+  40% { transform: rotateX(720deg) rotateY(540deg) rotateZ(270deg); }
+  60% { transform: rotateX(1080deg) rotateY(720deg) rotateZ(450deg); }
+  80% { transform: rotateX(1260deg) rotateY(900deg) rotateZ(540deg); }
+  100% { transform: rotateX(1440deg) rotateY(1080deg) rotateZ(720deg); }
+}
+
+.dice-face { 
+  position: absolute; 
+  width: 55px; 
+  height: 55px; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  background: linear-gradient(145deg, #a80000, #660000);
+  border: 3px solid #caa43b; 
+  border-radius: 10px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 12px #caa43b, 0 0 24px rgba(202,164,59,0.5);
+  box-shadow: inset 0 0 15px rgba(0,0,0,0.6), 0 4px 8px rgba(0,0,0,0.4);
+  backface-visibility: hidden;
+}
+
+.dice-face.front { transform: translateZ(27.5px); }
+.dice-face.back { transform: rotateY(180deg) translateZ(27.5px); }
+.dice-face.right { transform: rotateY(90deg) translateZ(27.5px); }
+.dice-face.left { transform: rotateY(-90deg) translateZ(27.5px); }
+.dice-face.top { transform: rotateX(90deg) translateZ(27.5px); }
+.dice-face.bottom { transform: rotateX(-90deg) translateZ(27.5px); }
+
+/* Efectos de partículas mejorados */
+.blood-particle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: radial-gradient(circle, #ff0000, #8b0000);
+  border-radius: 50%;
+  box-shadow: 0 0 5px #ff0000;
+  animation: bloodSplatter 1s forwards;
+}
+
+@keyframes bloodSplatter {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--x), var(--y)) scale(0); opacity: 0; }
+}
+
+.spark-particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: radial-gradient(circle, #ffd700, #ff8c00);
+  border-radius: 50%;
+  box-shadow: 0 0 12px #ffd700;
+  animation: sparkFly 0.8s forwards;
+}
+
+@keyframes sparkFly {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--x), var(--y)) scale(0); opacity: 0; }
+}
+
+/* Paneles adicionales */
+#hero-panel, #achievements, #economy-panel, #diplomacy-panel {
+  position: fixed;
+  background: linear-gradient(145deg, rgba(10,10,20,0.97), rgba(30,15,15,0.97));
+  padding: 18px;
+  border-radius: 14px;
+  z-index: 1000;
+  box-shadow: 0 10px 40px rgba(202, 164, 59, 0.4);
+  border: 3px solid rgba(202, 164, 59, 0.6);
+  color: #caa43b;
+  backdrop-filter: blur(10px);
+}
+
+#hero-panel {
+  bottom: 10px;
+  left: 10px;
+  width: 420px;
+}
+
+#achievements {
+  top: 10px;
+  right: 10px;
+  width: 330px;
+  max-height: 450px;
+  overflow-y: auto;
+}
+
+#economy-panel {
+  bottom: 10px;
+  right: 10px;
+  width: 350px;
+}
+
+#diplomacy-panel {
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  width: 330px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.hero-ability, .achievement, .economy-item, .diplo-item {
+  margin: 10px 0;
+  padding: 12px;
+  background: linear-gradient(145deg, rgba(0,0,0,0.4), rgba(20,20,20,0.4));
+  border-radius: 10px;
+  border-left: 4px solid #caa43b;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.hero-ability:hover, .economy-item:hover, .diplo-item:hover {
+  background: linear-gradient(145deg, rgba(202, 164, 59, 0.2), rgba(139, 115, 32, 0.2));
+  transform: translateX(8px);
+  box-shadow: 0 4px 12px rgba(202,164,59,0.3);
+}
+
+.hero-ability.cooldown {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+.achievement {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.achievement.unlocked {
+  opacity: 1;
+  animation: achievementUnlock 0.8s;
+  border-left-color: #00ff00;
+  box-shadow: 0 0 20px rgba(0,255,0,0.4);
+}
+
+@keyframes achievementUnlock {
+  0% { transform: scale(0.7) rotate(-5deg); opacity: 0; }
+  50% { transform: scale(1.15) rotate(2deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+/* Labels de territorio mejorados */
+.territory-label div {
+  background: linear-gradient(145deg, rgba(0,0,0,0.92), rgba(20,10,10,0.92)); 
+  padding: 8px 10px; 
+  border-radius: 8px; 
+  display: inline-block; 
+  font-size: 11px;
+  border: 2px solid rgba(202,164,59,0.6);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.7), 0 0 15px rgba(202,164,59,0.2);
+  backdrop-filter: blur(5px);
+}
+
+/* Tutorial */
+#tutorial {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.95);
+  z-index: 5000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+}
+
+#tutorial.show {
+  display: flex;
+}
+
+.tutorial-content {
+  background: linear-gradient(145deg, rgba(10,10,20,0.98), rgba(30,15,15,0.98));
+  padding: 50px;
+  border-radius: 20px;
+  max-width: 700px;
+  color: #caa43b;
+  text-align: center;
+  border: 4px solid #caa43b;
+  box-shadow: 0 0 60px rgba(202,164,59,0.8), inset 0 0 40px rgba(202,164,59,0.1);
+  animation: tutorialAppear 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes tutorialAppear {
+  from { transform: scale(0.5) rotate(10deg); opacity: 0; }
+  to { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+.tutorial-content h2 {
+  font-size: 38px;
+  margin-bottom: 25px;
+  text-shadow: 0 0 20px rgba(202,164,59,1), 0 0 40px rgba(202,164,59,0.6);
+  animation: titleGlow 2s infinite;
+}
+
+.tutorial-content button {
+  padding: 18px 40px;
+  font-size: 20px;
+  margin-top: 25px;
+  background: linear-gradient(145deg, #3a3a3a, #1a1a1a);
+  color: #caa43b;
+  border: 3px solid #caa43b;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-family: inherit;
+  font-weight: bold;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+}
+
+.tutorial-content button:hover {
+  transform: scale(1.15) translateY(-3px);
+  box-shadow: 0 0 40px rgba(202,164,59,1);
+  background: linear-gradient(145deg, #5a5a5a, #2a2a2a);
+}
+
+/* Combo y streak counter */
+#combo-counter {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  font-size: 80px;
+  font-weight: bold;
+  color: #ff0000;
+  text-shadow: 0 0 30px #ff0000, 0 0 60px #ff0000;
+  z-index: 4000;
+  pointer-events: none;
+  animation: none;
+}
+
+#combo-counter.show {
+  animation: comboShow 1.5s;
+}
+
+@keyframes comboShow {
+  0% { transform: translate(-50%, -50%) scale(0) rotate(-180deg); opacity: 0; }
+  50% { transform: translate(-50%, -50%) scale(2) rotate(0deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(0) rotate(180deg); opacity: 0; }
+}
+
+/* Barra de progreso */
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(0,0,0,0.5);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 8px 0;
+  border: 1px solid rgba(202,164,59,0.5);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #caa43b, #ffd700);
+  border-radius: 10px;
+  transition: width 0.5s;
+  box-shadow: 0 0 10px rgba(202,164,59,0.8);
+}
+
+/* Efectos de evento */
+#event-notification {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  background: linear-gradient(145deg, rgba(139,0,0,0.98), rgba(0,0,0,0.98));
+  padding: 40px;
+  border-radius: 20px;
+  z-index: 3000;
+  color: #fff;
+  width: 550px;
+  text-align: center;
+  box-shadow: 0 0 80px rgba(255,0,0,0.9), inset 0 0 40px rgba(255,0,0,0.2);
+  border: 5px solid #ff0000;
+}
+
+#event-notification.show {
+  animation: eventPop 0.6s forwards;
+}
+
+@keyframes eventPop {
+  0% { transform: translate(-50%, -50%) scale(0) rotate(-180deg); opacity: 0; }
+  70% { transform: translate(-50%, -50%) scale(1.1) rotate(5deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
+}
+
+#economy-panel, #diplomacy-panel {
+  display: none;
+}
+
+.hidden { display: none !important; }
+
+</style>
+</head>
+<body>
+<div id="weather-overlay"></div>
+<div id="map"></div>
+<div id="combo-counter">x<span id="combo-number">0</span> COMBO!</div>
+
+<div id="sidebar">
+  <h3 style="text-align:center; text-shadow: 0 0 15px #caa43b; margin-bottom: 15px;">⚔ RISK MEDIEVAL: TOTAL WAR ⚔</h3>
+  
+  <div class="tab-container">
+    <button class="tab-btn active" data-tab="game">🎮 Juego</button>
+    <button class="tab-btn" data-tab="economy">💰 Economía</button>
+    <button class="tab-btn" data-tab="military">⚔ Militar</button>
+  </div>
+
+  <div id="game-tab" class="tab-content active">
+    <div id="weather-info" style="text-align:center; font-size:13px; margin-bottom:12px; padding:8px; background:rgba(0,0,0,0.4); border-radius:8px;"></div>
+    <div id="streak-display" style="text-align:center; font-size:15px; margin-bottom:12px; padding:10px; background:linear-gradient(145deg, rgba(255,100,0,0.3), rgba(255,0,0,0.3)); border-radius:8px; border:2px solid #ff6600;">🔥 Racha de Victorias: <span id="streak">0</span></div>
+    
+    <h4 style="margin:15px 0 10px 0;">👥 Jugadores</h4>
+    <div id="players-list"></div>
+    
+    <div class="controls">
+      <button id="btn-recruit">🗡 Reclutar</button>
+      <button id="btn-fortify">🛡 Fortificar</button>
+      <button id="btn-hero">⭐ Héroe</button>
+      <button id="btn-pass">➡ Pasar Turno</button>
+      <button id="btn-diplomacy">🤝 Diplomacia</button>
+      <button id="btn-tech">🔬 Tecnología</button>
+    </div>
+
+    <div class="panel-toggles">
+      <button id="btn-toggle-hero">🦸 Mostrar Héroe</button>
+      <button id="btn-toggle-achievements">🏆 Mostrar Logros</button>
+    </div>
+    
+    <h4 style="margin:15px 0 8px 0;">📜 Registro de Eventos</h4>
+    <div id="log"></div>
+  </div>
+
+  <div id="economy-tab" class="tab-content">
+    <h4>💰 Panel Económico</h4>
+    <div id="economy-stats"></div>
+    <h4 style="margin-top:15px;">🏭 Construcciones</h4>
+    <div id="buildings-list"></div>
+  </div>
+
+  <div id="military-tab" class="tab-content">
+    <h4>⚔ Información Militar</h4>
+    <div id="troop-info">
+      <div style="margin:10px 0; padding:12px; background:rgba(0,0,0,0.4); border-radius:8px; border-left:4px solid #00ff00;">
+        <strong>🗡 Infantería</strong> (100$)<br>
+        <small>Atk: 1 | Def: 1 | Bono vs Arqueros</small>
+      </div>
+      <div style="margin:10px 0; padding:12px; background:rgba(0,0,0,0.4); border-radius:8px; border-left:4px solid #ff8800;">
+        <strong>🐎 Caballería</strong> (150$)<br>
+        <small>Atk: 2 | Def: 0.5 | Bono vs Infantería</small>
+      </div>
+      <div style="margin:10px 0; padding:12px; background:rgba(0,0,0,0.4); border-radius:8px; border-left:4px solid #00aaff;">
+        <strong>🏹 Arqueros</strong> (120$)<br>
+        <small>Atk: 0.5 | Def: 2 | Bono vs Caballería</small>
+      </div>
+      <div style="margin:10px 0; padding:12px; background:rgba(0,0,0,0.4); border-radius:8px; border-left:4px solid #aa00ff;">
+        <strong>🏰 Asedio</strong> (200$)<br>
+        <small>Atk: 3 | Def: 1 | Rompe Castillos</small>
+      </div>
+    </div>
+    <div id="military-stats"></div>
+  </div>
+</div>
+
+<div id="hero-panel" class="hidden-panel">
+  <h4 style="margin-top:0;">🦸 Panel de Héroe</h4>
+  <div style="margin:10px 0; padding:10px; background:rgba(202,164,59,0.2); border-radius:8px;">
+    <strong>Nivel: <span id="hero-level">1</span></strong><br>
+    <div class="progress-bar">
+      <div class="progress-fill" id="hero-xp-bar" style="width:0%"></div>
+    </div>
+    <small>XP: <span id="hero-xp">0</span>/200</small>
+  </div>
+  <h5 style="margin:12px 0 8px 0;">⚡ Habilidades</h5>
+  <div id="hero-abilities"></div>
+</div>
+
+<div id="achievements" class="hidden-panel">
+  <h4 style="margin-top:0;">🏆 Logros</h4>
+  <div id="achievements-list"></div>
+</div>
+
+<div id="economy-panel">
+  <h4 style="margin-top:0;">💰 Economía Detallada</h4>
+  <div id="economy-details"></div>
+</div>
+
+<div id="diplomacy-panel">
+  <h4 style="margin-top:0;">🤝 Diplomacia</h4>
+  <div id="diplomacy-options"></div>
+</div>
+
+<!-- Modales -->
+<div id="action-modal" class="modal">
+  <h3>¿Qué acción realizar?</h3>
+  <p id="modal-text"></p>
+  <button id="btn-action-attack">⚔ Atacar</button>
+  <button id="btn-action-move">🚶 Mover Tropas</button>
+  <button id="btn-action-cancel">❌ Cancelar</button>
+</div>
+
+<div id="action-qty-modal" class="modal">
+  <h3>Seleccionar Cantidad</h3>
+  <p id="modal-qty-text"></p>
+  <input type="number" id="modal-number" min="1">
+  <button id="modal-qty-confirm">✓ Confirmar</button>
+  <button id="modal-qty-cancel">❌ Cancelar</button>
+</div>
+
+<div id="recruit-modal" class="modal">
+  <h3>🗡 Centro de Reclutamiento</h3>
+  <button data-type="infantry" data-cost="100">🗡 Infantería (100$) - Versátil</button>
+  <button data-type="cavalry" data-cost="150">🐎 Caballería (150$) - Alta movilidad</button>
+  <button data-type="archer" data-cost="120">🏹 Arqueros (120$) - Defensa superior</button>
+  <button data-type="siege" data-cost="200">🏰 Asedio (200$) - Destructor de muros</button>
+  <button id="recruit-cancel">❌ Cancelar</button>
+</div>
+
+<div id="battle-modal" class="modal" style="width:850px; max-width:95vw;">
+  <h3 id="battle-text">⚔ ¡BATALLA ÉPICA! ⚔</h3>
+  <p id="battle-rank"></p>
+  <div id="battle-arena">
+    <div class="battle-side" id="attacker-side">
+      <h4 style="color:#00ff00;">⚔ Atacante</h4>
+      <div id="attacker-units"></div>
+      <div id="attacker-dice" class="dice-container"></div>
+    </div>
+    <div class="battle-side" id="defender-side">
+      <h4 style="color:#ff0000;">🛡 Defensor</h4>
+      <div id="defender-units"></div>
+      <div id="defender-dice" class="dice-container"></div>
+    </div>
+  </div>
+  <p id="battle-result" style="font-size:18px; font-weight:bold; margin:15px 0;"></p>
+  <button id="battle-close">✓ Continuar</button>
+</div>
+
+<div id="retreat-modal" class="modal">
+  <h3>⚠ Opción de Retirada</h3>
+  <p>¿Deseas retirarte de esta batalla?<br><small>Las tropas supervivientes regresarán</small></p>
+  <button id="retreat-yes">✓ Sí, Retirada Táctica</button>
+  <button id="retreat-no">⚔ No, ¡Luchar hasta el final!</button>
+</div>
+
+<div id="event-notification">
+  <h3 id="event-title"></h3>
+  <p id="event-description" style="font-size:16px; line-height:1.6; margin:20px 0;"></p>
+  <button id="event-close" style="background:linear-gradient(145deg, #ff4444, #aa0000); border-color:#ff0000;">Continuar</button>
+</div>
+
+<div id="tutorial" class="show">
+  <div class="tutorial-content">
+    <h2>🏰 RISK MEDIEVAL: TOTAL WAR 🏰</h2>
+    <p style="font-size:17px; line-height:1.8; margin:20px 0;">
+      <strong>¡Bienvenido, conquistador!</strong><br><br>
+      En este épico juego de estrategia medieval deberás:<br>
+      • Conquistar territorios y expandir tu imperio<br>
+      • Reclutar ejércitos especializados con ventajas tácticas<br>
+      • Gestionar tu economía y tecnología<br>
+      • Usar habilidades de héroe en momentos críticos<br>
+      • Adaptarte al clima dinámico que afecta las batallas<br>
+      • Mantener rachas de victorias para bonificaciones<br><br>
+      <strong>🎯 Objetivo:</strong> Dominar el mundo eliminando a todos los rivales<br><br>
+      <small>Atajos: R=Reclutar | F=Fortificar | H=Héroe | Espacio=Pasar Turno</small>
+    </p>
+    <button id="start-game">⚔ ¡INICIAR CONQUISTA! ⚔</button>
+  </div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ============= CONFIGURACIÓN GLOBAL =============
+const CONFIG = {
+  NUM_FACTIONS: 5,
+  PLAYER_ID: 0,
+  START_MONEY: 400,
+  INCOME_PER_TERR: 60,
+  FORTIFY_COST: 200,
+  FORTIFY_BONUS: 2,
+  TECH_COST_BASE: 300,
+  BUILDING_COST_BASE: 250
+};
+
+const colors = ['#00ff00', '#ff0000', '#0080ff', '#ff8000', '#ff00ff'];
+let gameState = {
+  current: 0,
+  selected: null,
+  target: null,
+  actionMode: null,
+  fortifyActive: {},
+  weather: 'clear',
+  turnCount: 0,
+  winStreak: 0,
+  comboCount: 0,
+  pendingQuantity: null,
+  heroBuffs: { attackBonus: 0, defenseBonus: 0, quickStrike: false }
+};
+
+// ============= SISTEMA DE LOGROS =============
+const achievements = {
+  firstBlood: { name: 'Primera Sangre', desc: 'Gana tu primera batalla', unlocked: false, icon: '🩸' },
+  conqueror: { name: 'Conquistador', desc: 'Conquista 5 territorios', unlocked: false, icon: '🗺' },
+  warlord: { name: 'Señor de la Guerra', desc: 'Gana 10 batallas', unlocked: false, icon: '⚔' },
+  emperor: { name: 'Emperador', desc: 'Controla 15 territorios', unlocked: false, icon: '👑' },
+  survivor: { name: 'Superviviente', desc: 'Sobrevive 20 turnos', unlocked: false, icon: '🛡' },
+  economist: { name: 'Economista', desc: 'Acumula 2000 de oro', unlocked: false, icon: '💰' },
+  destroyer: { name: 'Destructor', desc: 'Conquista un castillo', unlocked: false, icon: '🏰' }
+};
+
+let stats = {
+  battlesWon: 0,
+  territoriesConquered: 0,
+  totalTurns: 0,
+  goldEarned: 0
+};
+
+// ============= SISTEMA DE HÉROES =============
+const heroAbilities = [
+  { name: 'Furia de Batalla', desc: '+3 ataque en la siguiente batalla', cooldown: 0, maxCooldown: 3, icon: '🔥', cost: 0 },
+  { name: 'Grito de Guerra', desc: 'Duplica tropas del territorio seleccionado', cooldown: 0, maxCooldown: 5, icon: '📢', cost: 100 },
+  { name: 'Escudo Divino', desc: '+4 defensa durante 2 turnos', cooldown: 0, maxCooldown: 4, icon: '🛡', cost: 50 },
+  { name: 'Asalto Rápido', desc: 'El próximo ataque no consume movimiento', cooldown: 0, maxCooldown: 6, icon: '⚡', cost: 80 }
+];
+
+let playerHero = {
+  level: 1,
+  xp: 0,
+  abilities: JSON.parse(JSON.stringify(heroAbilities))
+};
+
+// ============= TIPOS DE TROPAS =============
+const troopTypes = {
+  infantry: { cost: 100, attack: 1, defense: 1, bonusVs: 'archer', rank: 4, icon: '🗡', name: 'Infantería' },
+  cavalry: { cost: 150, attack: 2, defense: 0.5, bonusVs: 'infantry', rank: 3, icon: '🐎', name: 'Caballería' },
+  archer: { cost: 120, attack: 0.5, defense: 2, bonusVs: 'cavalry', rank: 2, icon: '🏹', name: 'Arqueros' },
+  siege: { cost: 200, attack: 3, defense: 1, bonusVs: null, rank: 1, icon: '🏰', name: 'Asedio' }
+};
+
+// ============= CONSTRUCCIONES =============
+const buildingTypes = {
+  market: { name: 'Mercado', cost: CONFIG.BUILDING_COST_BASE, income: 40, desc: 'Aumenta ingresos en +40.' },
+  forge: { name: 'Forja', cost: CONFIG.BUILDING_COST_BASE + 120, attackBonus: 1, desc: '+1 dado de ataque en el territorio.' },
+  walls: { name: 'Murallas', cost: CONFIG.BUILDING_COST_BASE + 80, defenseBonus: 1, desc: '+1 dado de defensa en el territorio.' }
+};
+
+// ============= TERRITORIOS =============
+const territories = [
+  {id:0,name:'Alaska',lat:64.2,lng:-149,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,18,12],isCastle:false,building:null,economy:50},
+  {id:1,name:'Canadá',lat:60,lng:-100,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[0,2,18,19],isCastle:false,building:null,economy:60},
+  {id:2,name:'USA',lat:38,lng:-97,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,3,4],isCastle:false,building:null,economy:80},
+  {id:3,name:'México',lat:23,lng:-102,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[2,4],isCastle:false,building:null,economy:55},
+  {id:4,name:'Brasil',lat:-10,lng:-55,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[2,3,5,11],isCastle:false,building:null,economy:70},
+  {id:5,name:'Argentina',lat:-34,lng:-64,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[4,11],isCastle:false,building:null,economy:60},
+  {id:6,name:'Reino Unido',lat:55,lng:-3,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[7,8,19],isCastle:false,building:null,economy:75},
+  {id:7,name:'Francia',lat:46,lng:2,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[6,8,9],isCastle:false,building:null,economy:70},
+  {id:8,name:'Alemania',lat:51,lng:10,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[6,7,9,12],isCastle:false,building:null,economy:80},
+  {id:9,name:'Italia',lat:42,lng:12,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[7,8,10],isCastle:false,building:null,economy:65},
+  {id:10,name:'Egipto',lat:26,lng:31,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[9,11,14],isCastle:false,building:null,economy:60},
+  {id:11,name:'Sudáfrica',lat:-30,lng:25,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[10,16,4,5],isCastle:false,building:null,economy:55},
+  {id:12,name:'Rusia',lat:60,lng:90,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13,0,8],isCastle:false,building:null,economy:90},
+  {id:13,name:'China',lat:35,lng:104,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[12,14,15,16],isCastle:false,building:null,economy:85},
+  {id:14,name:'India',lat:21,lng:78,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13,10,16],isCastle:false,building:null,economy:75},
+  {id:15,name:'Japón',lat:36,lng:138,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[13],isCastle:false,building:null,economy:70},
+  {id:16,name:'Australia',lat:-25,lng:133,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[17,13,11,14],isCastle:false,building:null,economy:65},
+  {id:17,name:'Nueva Zelanda',lat:-41,lng:174,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[16],isCastle:false,building:null,economy:50},
+  {id:18,name:'Groenlandia',lat:72,lng:-40,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[0,1,19],isCastle:false,building:null,economy:40},
+  {id:19,name:'Islandia',lat:65,lng:-18,owner:null,troops:{infantry:0,cavalry:0,archer:0,siege:0},moved:false,neighbors:[1,6,18],isCastle:false,building:null,economy:45},
+];
+
+// ============= JUGADORES =============
+const players = [];
+for(let i=0; i<CONFIG.NUM_FACTIONS; i++){
+  players.push({
+    id:i, 
+    name:i===CONFIG.PLAYER_ID?'👑 TÚ':'🤖 IA '+i, 
+    money:CONFIG.START_MONEY, 
+    isAI:i!==CONFIG.PLAYER_ID,
+    tech: { military: 0, economy: 0, defense: 0 },
+    relations: {}
+  });
+}
+
+// ============= INICIALIZACIÓN DEL MAPA =============
+const map = L.map('map', {
+  zoomControl: false,
+  attributionControl: false
+}).setView([20,0], 2);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 5,
+  minZoom: 2
+}).addTo(map);
+
+// Asignar territorios iniciales
+let available = [...Array(territories.length).keys()];
+for(let p=0; p<CONFIG.NUM_FACTIONS; p++){
+  let idx = available.splice(Math.floor(Math.random()*available.length), 1)[0];
+  territories[idx].owner = p;
+  territories[idx].troops.infantry = 4;
+  territories[idx].troops.archer = 1;
+}
+
+// Asignar castillos
+territories.forEach(t => {
+  if(Math.random() < 0.2) {
+    t.isCastle = true;
+  }
+});
+
+// Crear markers
+territories.forEach(t=>{
+  t.marker = L.circleMarker([t.lat,t.lng], {
+    radius: t.isCastle ? 30 : 24,
+    color: '#000',
+    fillColor: t.owner!==null ? colors[t.owner] : '#555',
+    fillOpacity: 0.9,
+    weight: 3
+  }).addTo(map);
+  
+  t.label = L.marker([t.lat,t.lng+3], {
+    icon: L.divIcon({
+      className: 'territory-label',
+      html: getTerritoryLabel(t)
+    })
+  }).addTo(map);
+  
+  t.marker.on('click', () => selectTerritory(t));
+});
+
+function getTerritoryLabel(t) {
+  let troopsHtml = '';
+  Object.keys(t.troops).forEach(type => {
+    if (t.troops[type] > 0) {
+      troopsHtml += `${troopTypes[type].icon}${t.troops[type]} `;
+    }
+  });
+  const buildingIcon = t.building ? '🏭' : '';
+  return `<div style="color:#fff;text-align:center;"><div>${t.name}${t.isCastle ? ' 🏰' : ''}${buildingIcon}<br>${troopsHtml || '💂0'}</div></div>`;
+}
+
+function getTotalTroops(t) {
+  return Object.values(t.troops).reduce((a, b) => a + b, 0);
+}
+
+// ============= SISTEMA DE CLIMA =============
+const weatherTypes = ['clear', 'rain', 'snow', 'fog', 'storm'];
+const weatherEffects = {
+  clear: { name: '☀ Despejado', attackMod: 0, defenseMod: 0 },
+  rain: { name: '🌧 Lluvia', attackMod: -1, defenseMod: +1 },
+  snow: { name: '❄ Nieve', attackMod: -2, defenseMod: 0 },
+  fog: { name: '🌫 Niebla', attackMod: -1, defenseMod: -1 },
+  storm: { name: '⛈ Tormenta', attackMod: -2, defenseMod: -2 }
+};
+
+function changeWeather() {
+  gameState.weather = weatherTypes[Math.floor(Math.random() * weatherTypes.length)];
+  updateWeatherDisplay();
+  createWeatherEffect();
+}
+
+function updateWeatherDisplay() {
+  document.getElementById('weather-info').textContent = weatherEffects[gameState.weather].name;
+}
+
+function createWeatherEffect() {
+  const overlay = document.getElementById('weather-overlay');
+  overlay.innerHTML = '';
+  
+  if(gameState.weather === 'rain' || gameState.weather === 'storm') {
+    for(let i=0; i<80; i++) {
+      const drop = document.createElement('div');
+      drop.className = 'rain-drop';
+      drop.style.left = Math.random() * 100 + '%';
+      drop.style.animationDuration = (Math.random() * 0.4 + 0.35) + 's';
+      drop.style.animationDelay = Math.random() * 1.5 + 's';
+      overlay.appendChild(drop);
+    }
+  } else if(gameState.weather === 'snow') {
+    for(let i=0; i<40; i++) {
+      const flake = document.createElement('div');
+      flake.className = 'snow-flake';
+      flake.style.left = Math.random() * 100 + '%';
+      flake.style.animationDuration = (Math.random() * 2 + 2) + 's';
+      flake.style.animationDelay = Math.random() * 2 + 's';
+      overlay.appendChild(flake);
+    }
+  }
+}
+
+// ============= UTILIDADES DE UI =============
+function addLog(message) {
+  const logEl = document.getElementById('log');
+  const div = document.createElement('div');
+  div.innerHTML = message;
+  logEl.prepend(div);
+  while(logEl.children.length > 40) {
+    logEl.removeChild(logEl.lastChild);
+  }
+}
+
+function refreshMarkers() {
+  territories.forEach(t => {
+    t.marker.setStyle({
+      fillColor: t.owner !== null ? colors[t.owner] : '#555',
+      weight: gameState.selected && t.id === gameState.selected.id ? 5 : 3,
+      color: gameState.selected && t.id === gameState.selected.id ? '#ffd700' : '#000',
+      opacity: t.moved ? 0.5 : 1,
+      radius: t.isCastle ? 30 : 24
+    });
+
+    t.label.setIcon(L.divIcon({
+      className: 'territory-label',
+      html: getTerritoryLabel(t)
+    }));
+  });
+
+  if(gameState.selected) {
+    gameState.selected.neighbors.forEach(id => {
+      const neighbor = territories.find(tt => tt.id === id);
+      if(neighbor) {
+        neighbor.marker.setStyle({ color: '#00ff90', weight: 4 });
+      }
+    });
+  }
+}
+
+function updatePlayersList() {
+  const playersEl = document.getElementById('players-list');
+  playersEl.innerHTML = '';
+  players.forEach(player => {
+    if(isPlayerEliminated(player.id)) return;
+    const terrOwned = territories.filter(t => t.owner === player.id).length;
+    const div = document.createElement('div');
+    div.className = 'player-item' + (player.id === gameState.current ? ' current' : '');
+    div.innerHTML = `
+      <div>
+        <span class="player-color" style="background:${colors[player.id]}"></span>
+        ${player.name}
+      </div>
+      <div style="text-align:right;">
+        💰 ${player.money}<br>
+        🗺 ${terrOwned} terr.<br>
+        🔧 Tec: ${player.tech.military}/${player.tech.economy}/${player.tech.defense}
+      </div>
+    `;
+    playersEl.appendChild(div);
+  });
+}
+
+function renderAchievements() {
+  const list = document.getElementById('achievements-list');
+  list.innerHTML = '';
+  Object.entries(achievements).forEach(([key, ach]) => {
+    const div = document.createElement('div');
+    div.className = 'achievement' + (ach.unlocked ? ' unlocked' : '');
+    div.innerHTML = `<strong>${ach.icon} ${ach.name}</strong><br><small>${ach.desc}</small>`;
+    list.appendChild(div);
+  });
+}
+
+function unlockAchievement(key) {
+  if(!achievements[key] || achievements[key].unlocked) return;
+  achievements[key].unlocked = true;
+  addLog(`🏆 ¡Logro desbloqueado: <strong>${achievements[key].name}</strong>!`);
+  renderAchievements();
+}
+
+function checkAchievements() {
+  if(!achievements.firstBlood.unlocked && stats.battlesWon >= 1) unlockAchievement('firstBlood');
+  if(!achievements.conqueror.unlocked && stats.territoriesConquered >= 5) unlockAchievement('conqueror');
+  if(!achievements.warlord.unlocked && stats.battlesWon >= 10) unlockAchievement('warlord');
+  if(!achievements.emperor.unlocked && territories.filter(t => t.owner === CONFIG.PLAYER_ID).length >= 15) unlockAchievement('emperor');
+  if(!achievements.survivor.unlocked && stats.totalTurns >= 20) unlockAchievement('survivor');
+  if(!achievements.economist.unlocked && players[CONFIG.PLAYER_ID].money >= 2000) unlockAchievement('economist');
+}
+
+function updateHeroPanel() {
+  document.getElementById('hero-level').textContent = playerHero.level;
+  document.getElementById('hero-xp').textContent = playerHero.xp;
+  const needed = heroXpNeeded();
+  const percent = Math.min(100, (playerHero.xp / needed) * 100);
+  document.getElementById('hero-xp-bar').style.width = percent + '%';
+  renderHeroAbilities();
+}
+
+function renderHeroAbilities() {
+  const container = document.getElementById('hero-abilities');
+  container.innerHTML = '';
+  playerHero.abilities.forEach((ability, index) => {
+    const div = document.createElement('div');
+    div.className = 'hero-ability' + (ability.cooldown > 0 ? ' cooldown' : '');
+    div.innerHTML = `<strong>${ability.icon} ${ability.name}</strong> ${ability.cooldown>0 ? `(CD ${ability.cooldown})` : ''}<br><small>${ability.desc}${ability.cost?` • Coste ${ability.cost}`:''}</small>`;
+    if(ability.cooldown === 0) {
+      div.addEventListener('click', () => useHeroAbility(index));
+    }
+    container.appendChild(div);
+  });
+}
+
+function heroXpNeeded() {
+  return 200 * playerHero.level;
+}
+
+function gainHeroXP(amount) {
+  playerHero.xp += amount;
+  if(playerHero.xp >= heroXpNeeded()) {
+    playerHero.xp -= heroXpNeeded();
+    playerHero.level++;
+    addLog(`⭐ ¡Tu héroe sube al nivel ${playerHero.level}!`);
+  }
+  updateHeroPanel();
+}
+
+function updateEconomyStats() {
+  const statsEl = document.getElementById('economy-stats');
+  const player = players[CONFIG.PLAYER_ID];
+  const territoriesOwned = territories.filter(t => t.owner === CONFIG.PLAYER_ID);
+  const baseIncome = territoriesOwned.length * CONFIG.INCOME_PER_TERR;
+  const buildingIncome = territoriesOwned.reduce((acc, t) => acc + (t.building && buildingTypes[t.building]?.income || 0) + (t.economy || 0), 0);
+  statsEl.innerHTML = `
+    <div class="economy-item">💰 Oro actual: <strong>${player.money}</strong></div>
+    <div class="economy-item">📈 Ingreso base: ${baseIncome}</div>
+    <div class="economy-item">🏭 Bonus edificios: ${buildingIncome}</div>
+    <div class="economy-item">🔧 Tecnología Economía: Nivel ${player.tech.economy}</div>
+  `;
+
+  const detailsEl = document.getElementById('economy-details');
+  detailsEl.innerHTML = '';
+  territoriesOwned.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'economy-item';
+    div.innerHTML = `<strong>${t.name}</strong><br>Producción: ${CONFIG.INCOME_PER_TERR + (t.economy||0)}${t.building && buildingTypes[t.building]?.income?` (+${buildingTypes[t.building].income})`:''}`;
+    detailsEl.appendChild(div);
+  });
+
+  renderBuildingsList();
+}
+
+function renderBuildingsList() {
+  const list = document.getElementById('buildings-list');
+  const player = players[CONFIG.PLAYER_ID];
+  list.innerHTML = '';
+  territories.filter(t => t.owner === CONFIG.PLAYER_ID).forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'economy-item';
+    const building = t.building ? `<strong>${buildingTypes[t.building].name}</strong>` : '<em>Sin construir</em>';
+    let actions = '';
+    if(!t.building) {
+      actions = Object.entries(buildingTypes).map(([key, data]) => `<button data-build="${key}" data-territory="${t.id}" style="margin:4px;">${data.name} (${data.cost}$)</button>`).join(' ');
+    } else {
+      actions = `<button data-remove="${t.id}" style="margin-top:6px;">Demoler</button>`;
+    }
+    div.innerHTML = `<strong>${t.name}</strong><br>${building}<div style="margin-top:6px;">${actions}</div>`;
+    list.appendChild(div);
+  });
+}
+
+function updateMilitaryStats() {
+  const statsEl = document.getElementById('military-stats');
+  const territoriesOwned = territories.filter(t => t.owner === CONFIG.PLAYER_ID);
+  const totals = { infantry:0, cavalry:0, archer:0, siege:0 };
+  territoriesOwned.forEach(t => {
+    Object.keys(t.troops).forEach(type => totals[type]+=t.troops[type]);
+  });
+  statsEl.innerHTML = `
+    <div class="economy-item">🪖 Tropas totales: ${Object.values(totals).reduce((a,b)=>a+b,0)}</div>
+    <div class="economy-item">🗡 Infantería: ${totals.infantry}</div>
+    <div class="economy-item">🐎 Caballería: ${totals.cavalry}</div>
+    <div class="economy-item">🏹 Arqueros: ${totals.archer}</div>
+    <div class="economy-item">🏰 Asedio: ${totals.siege}</div>
+  `;
+}
+
+function updateDiplomacyPanel() {
+  const panel = document.getElementById('diplomacy-options');
+  panel.innerHTML = '';
+  players.forEach(p => {
+    if(p.id === CONFIG.PLAYER_ID || isPlayerEliminated(p.id)) return;
+    const relation = getRelation(CONFIG.PLAYER_ID, p.id);
+    const div = document.createElement('div');
+    div.className = 'diplo-item';
+    div.innerHTML = `<strong>${p.name}</strong><br>Relación: ${relation > 50 ? 'Aliado' : relation > 25 ? 'Neutral' : 'Hostil'} (${relation.toFixed(0)})<br><button data-influence="${p.id}">Mejorar relación (-150$)</button>`;
+    panel.appendChild(div);
+  });
+}
+
+function updateStreakDisplay() {
+  document.getElementById('streak').textContent = gameState.winStreak;
+}
+
+function showCombo(combo) {
+  if(combo < 2) return;
+  const counter = document.getElementById('combo-counter');
+  counter.classList.remove('show');
+  void counter.offsetWidth;
+  document.getElementById('combo-number').textContent = combo;
+  counter.classList.add('show');
+}
+
+function updateUI() {
+  refreshMarkers();
+  updatePlayersList();
+  updateEconomyStats();
+  updateMilitaryStats();
+  updateDiplomacyPanel();
+  updateStreakDisplay();
+  checkAchievements();
+}
+
+// ============= RELACIONES =============
+function getRelation(a, b) {
+  const key = `${Math.min(a,b)}-${Math.max(a,b)}`;
+  players[a].relations[key] ??= 30 + Math.random()*20;
+  players[b].relations[key] = players[a].relations[key];
+  return players[a].relations[key];
+}
+
+function adjustRelation(a, b, amount) {
+  const key = `${Math.min(a,b)}-${Math.max(a,b)}`;
+  const current = getRelation(a,b);
+  const updated = Math.max(0, Math.min(100, current + amount));
+  players[a].relations[key] = players[b].relations[key] = updated;
+}
+
+// ============= SELECCIÓN Y MODALES =============
+function selectTerritory(territory) {
+  if(players[gameState.current].isAI) return;
+  if(gameState.actionMode) {
+    handleActionTarget(territory);
+    return;
+  }
+  if(territory.owner !== CONFIG.PLAYER_ID) {
+    addLog('❌ Debes seleccionar primero un territorio propio.');
+    return;
+  }
+  gameState.selected = territory;
+  gameState.target = null;
+  document.getElementById('modal-text').textContent = `Territorio ${territory.name} (${getTotalTroops(territory)} tropas).`;
+  showModal('action-modal');
+  refreshMarkers();
+}
+
+function handleActionTarget(target) {
+  if(!gameState.selected) return;
+  if(gameState.actionMode === 'attack') {
+    if(!gameState.selected.neighbors.includes(target.id)) {
+      addLog('⚠ Solo puedes atacar territorios adyacentes.');
+      return;
+    }
+    if(target.owner === CONFIG.PLAYER_ID) {
+      addLog('⚠ No puedes atacar tus propios territorios.');
+      return;
+    }
+    gameState.target = target;
+    const maxTroops = Math.max(1, getTotalTroops(gameState.selected) - 1);
+    gameState.pendingQuantity = { mode: 'attack' };
+    showQuantityModal(`¿Cuántas tropas deseas enviar desde ${gameState.selected.name}?`, maxTroops);
+  } else if(gameState.actionMode === 'move') {
+    if(!gameState.selected.neighbors.includes(target.id)) {
+      addLog('⚠ Solo puedes mover tropas a territorios conectados.');
+      return;
+    }
+    if(target.owner !== CONFIG.PLAYER_ID) {
+      addLog('⚠ Solo puedes mover tropas entre territorios aliados.');
+      return;
+    }
+    gameState.target = target;
+    const maxTroops = Math.max(1, getTotalTroops(gameState.selected) - 1);
+    gameState.pendingQuantity = { mode: 'move' };
+    showQuantityModal(`¿Cuántas tropas mover de ${gameState.selected.name} a ${target.name}?`, maxTroops);
+  }
+}
+
+function showModal(id) {
+  document.getElementById(id).style.display = 'block';
+}
+
+function hideModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+function showQuantityModal(text, max) {
+  if(max <= 0) {
+    addLog('⚠ Necesitas al menos 2 tropas para realizar la acción.');
+    gameState.actionMode = null;
+    gameState.pendingQuantity = null;
+    return;
+  }
+  document.getElementById('modal-qty-text').textContent = `${text} (Máx ${max})`;
+  const input = document.getElementById('modal-number');
+  input.value = Math.min(3, max);
+  input.max = max;
+  showModal('action-qty-modal');
+}
+
+// ============= ACCIONES DEL JUGADOR =============
+function prepareAttack() {
+  hideModal('action-modal');
+  gameState.actionMode = 'attack';
+  addLog('⚔ Selecciona un territorio enemigo vecino para atacar.');
+}
+
+function prepareMove() {
+  hideModal('action-modal');
+  gameState.actionMode = 'move';
+  addLog('🚶 Selecciona un territorio aliado vecino para mover tropas.');
+}
+
+function cancelAction() {
+  hideModal('action-modal');
+  gameState.actionMode = null;
+  gameState.pendingQuantity = null;
+  refreshMarkers();
+}
+
+function confirmQuantity() {
+  const qty = parseInt(document.getElementById('modal-number').value, 10);
+  if(Number.isNaN(qty) || qty <= 0) return;
+  hideModal('action-qty-modal');
+  if(!gameState.pendingQuantity) return;
+  if(gameState.pendingQuantity.mode === 'attack') {
+    executeAttack(qty);
+  } else if(gameState.pendingQuantity.mode === 'move') {
+    executeMove(qty);
+  }
+  gameState.actionMode = null;
+  gameState.pendingQuantity = null;
+}
+
+function executeMove(qty) {
+  const from = gameState.selected;
+  const to = gameState.target;
+  if(!from || !to) return;
+  const available = getTotalTroops(from) - 1;
+  qty = Math.min(qty, available);
+  if(qty <= 0) {
+    addLog('⚠ Necesitas dejar al menos una tropa en el territorio origen.');
+    return;
+  }
+  const movedTroops = splitTroops(from.troops, qty);
+  applyTroopChange(from, negateTroops(movedTroops));
+  applyTroopChange(to.troops, movedTroops);
+  from.moved = true;
+  addLog(`🚶 Moviste ${qty} tropas de ${from.name} a ${to.name}.`);
+  refreshMarkers();
+}
+
+function executeAttack(qty) {
+  const from = gameState.selected;
+  const to = gameState.target;
+  if(!from || !to) return;
+  const available = getTotalTroops(from) - 1;
+  qty = Math.min(qty, available);
+  if(qty <= 0) {
+    addLog('⚠ Necesitas dejar una tropa en el territorio atacante.');
+    return;
+  }
+  const attackingForce = splitTroops(from.troops, qty);
+  applyTroopChange(from, negateTroops(attackingForce));
+  from.moved = !gameState.heroBuffs.quickStrike;
+  resolveBattle(from, to, attackingForce);
+  gameState.heroBuffs.quickStrike = false;
+}
+
+function splitTroops(troops, qty) {
+  const total = getTotalFromObject(troops);
+  const result = { infantry:0, cavalry:0, archer:0, siege:0 };
+  if(total === 0) return result;
+  let remaining = qty;
+  ['infantry','cavalry','archer','siege'].forEach(type => {
+    if(remaining <= 0) return;
+    const share = Math.min(troops[type], Math.round((troops[type]/total)*qty));
+    result[type] = share;
+    remaining -= share;
+  });
+  while(remaining > 0) {
+    const type = ['infantry','cavalry','archer','siege'].find(t => troops[t] > result[t]);
+    if(!type) break;
+    result[type]++;
+    remaining--;
+  }
+  return result;
+}
+
+function negateTroops(troopObj) {
+  const res = {};
+  Object.keys(troopObj).forEach(k => res[k] = -troopObj[k]);
+  return res;
+}
+
+function applyTroopChange(troops, change) {
+  Object.keys(troops).forEach(type => {
+    troops[type] = Math.max(0, troops[type] + (change[type] || 0));
+  });
+}
+
+function getTotalFromObject(obj) {
+  return Object.values(obj).reduce((a,b)=>a+b,0);
+}
+
+// ============= BATALLAS =============
+function resolveBattle(attackerTerr, defenderTerr, attackForce) {
+  const defenderForce = { ...defenderTerr.troops };
+  const attackerTotal = getTotalFromObject(attackForce);
+  const defenderTotal = getTotalFromObject(defenderForce);
+  if(attackerTotal <= 0 || defenderTotal <= 0) {
+    addLog('⚠ Batalla cancelada por falta de tropas.');
+    applyTroopChange(attackerTerr.troops, attackForce);
+    return;
+  }
+
+  const weatherMod = weatherEffects[gameState.weather];
+  const attackModifiers = computeModifiers(attackForce, defenderForce, 'attack') + gameState.heroBuffs.attackBonus + weatherMod.attackMod;
+  const defenseModifiers = computeModifiers(defenderForce, attackForce, 'defense') + (gameState.fortifyActive[defenderTerr.id]?.bonus || 0) + weatherMod.defenseMod;
+  const attackDiceCount = Math.min(3 + Math.max(0, Math.floor(attackModifiers/2)), attackerTotal);
+  const defenseDiceCount = Math.min(3 + (defenderTerr.building === 'walls' ? 1 : 0) + Math.max(0, Math.floor(defenseModifiers/2)), Math.max(1, defenderTotal));
+
+  const attackRolls = rollDice(attackDiceCount, attackModifiers);
+  const defenseRolls = rollDice(defenseDiceCount, defenseModifiers);
+  const sortedAttack = [...attackRolls].sort((a,b)=>b-a);
+  const sortedDefense = [...defenseRolls].sort((a,b)=>b-a);
+
+  let attackLosses = 0;
+  let defenseLosses = 0;
+  const comparisons = Math.min(sortedAttack.length, sortedDefense.length);
+  for(let i=0; i<comparisons; i++) {
+    if(sortedAttack[i] > sortedDefense[i]) {
+      defenseLosses++;
+    } else {
+      attackLosses++;
+    }
+  }
+
+  removeCasualties(attackForce, attackLosses);
+  removeCasualties(defenderForce, defenseLosses);
+
+  showBattleModal(attackerTerr, defenderTerr, attackRolls, defenseRolls, attackForce, defenderForce, attackLosses, defenseLosses);
+
+  const remainingAttack = getTotalFromObject(attackForce);
+  const remainingDefense = getTotalFromObject(defenderForce);
+
+  if(remainingDefense <= 0) {
+    stats.battlesWon += attackerTerr.owner === CONFIG.PLAYER_ID ? 1 : 0;
+    stats.territoriesConquered += attackerTerr.owner === CONFIG.PLAYER_ID ? 1 : 0;
+    if(defenderTerr.isCastle) unlockAchievement('destroyer');
+    transferTerritory(attackerTerr, defenderTerr, attackForce);
+    gameState.winStreak++;
+    showCombo(gameState.winStreak);
+    gainHeroXP(50);
+    addLog(`🏆 ${players[attackerTerr.owner].name} conquista ${defenderTerr.name}!`);
+  } else {
+    applyTroopChange(defenderTerr.troops, negateTroops(defenderTerr.troops));
+    applyTroopChange(defenderTerr.troops, defenderForce);
+    if(remainingAttack > 0) {
+      applyTroopChange(attackerTerr.troops, attackForce);
+    }
+    if(attackerTerr.owner === CONFIG.PLAYER_ID) {
+      gameState.winStreak = 0;
+    }
+    addLog(`🛡 ${defenderTerr.name} resiste el ataque.`);
+  }
+
+  gameState.heroBuffs.attackBonus = 0;
+  gameState.heroBuffs.defenseBonus = 0;
+  refreshMarkers();
+  updateUI();
+  checkVictory();
+}
+
+function computeModifiers(force, enemyForce, mode) {
+  let modifier = 0;
+  Object.keys(force).forEach(type => {
+    if(force[type] <= 0) return;
+    const troop = troopTypes[type];
+    if(mode === 'attack' && troop.bonusVs && enemyForce[troop.bonusVs] > 0) modifier += 1;
+    if(mode === 'defense' && troop.bonusVs && enemyForce[troop.bonusVs] > 0) modifier += 1;
+    if(type === 'siege' && mode === 'attack') modifier += 1;
+  });
+  return modifier;
+}
+
+function rollDice(count, modifier) {
+  const rolls = [];
+  for(let i=0; i<count; i++) {
+    rolls.push(Math.max(1, Math.min(12, Math.floor(Math.random()*6)+1 + Math.floor(modifier/2))));
+  }
+  return rolls;
+}
+
+function removeCasualties(force, losses) {
+  let remaining = losses;
+  const order = ['infantry','cavalry','archer','siege'];
+  let idx = 0;
+  while(remaining > 0 && idx < order.length) {
+    const type = order[idx];
+    const loss = Math.min(force[type], Math.max(0, Math.ceil(remaining / (order.length-idx))));
+    force[type] = Math.max(0, force[type] - loss);
+    remaining -= loss;
+    idx++;
+  }
+}
+
+function showBattleModal(attackerTerr, defenderTerr, attackDice, defenseDice, attackForce, defenderForce, attackLosses, defenseLosses) {
+  document.getElementById('battle-text').textContent = `⚔ ${attackerTerr.name} vs ${defenderTerr.name}`;
+  document.getElementById('battle-rank').textContent = getBattleRank(attackForce, defenderForce);
+  populateUnits('attacker-units', attackForce, 'attacking');
+  populateUnits('defender-units', defenderForce, 'defending');
+  renderDice('attacker-dice', attackDice);
+  renderDice('defender-dice', defenseDice);
+  document.getElementById('battle-result').textContent = `⚔ Bajas atacante: ${attackLosses} | 🛡 Bajas defensor: ${defenseLosses}`;
+  showModal('battle-modal');
+}
+
+function populateUnits(containerId, troops, animationClass) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  Object.entries(troops).forEach(([type, count]) => {
+    for(let i=0; i<count; i++) {
+      const div = document.createElement('div');
+      div.className = `battle-unit ${type} ${animationClass}`;
+      container.appendChild(div);
+    }
+  });
+}
+
+function renderDice(containerId, rolls) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  rolls.forEach(value => {
+    const dice = document.createElement('div');
+    dice.className = 'dice rolling';
+    dice.innerHTML = `
+      <div class="dice-inner">
+        <div class="dice-face front">${value}</div>
+        <div class="dice-face back">${value}</div>
+        <div class="dice-face left">${value}</div>
+        <div class="dice-face right">${value}</div>
+        <div class="dice-face top">${value}</div>
+        <div class="dice-face bottom">${value}</div>
+      </div>`;
+    container.appendChild(dice);
+  });
+}
+
+function getBattleRank(attForce, defForce) {
+  const attPower = battlePower(attForce);
+  const defPower = battlePower(defForce);
+  const ratio = attPower / Math.max(1, defPower);
+  if(ratio >= 1.5) return '🔥 Victoria casi segura';
+  if(ratio >= 1.1) return '⚔ Ventaja atacante';
+  if(ratio >= 0.9) return '⚖ Batalla equilibrada';
+  if(ratio >= 0.7) return '🛡 Ventaja defensor';
+  return '☠ Riesgo extremo';
+}
+
+function battlePower(force) {
+  return force.infantry*1 + force.cavalry*1.8 + force.archer*1.5 + force.siege*2.5;
+}
+
+function transferTerritory(from, to, survivingAttackForce) {
+  const previousOwner = to.owner;
+  to.owner = from.owner;
+  applyTroopChange(to.troops, negateTroops(to.troops));
+  applyTroopChange(to.troops, survivingAttackForce);
+  if(previousOwner === CONFIG.PLAYER_ID) {
+    gameState.winStreak = 0;
+  }
+  if(previousOwner !== null && territories.every(t => t.owner !== previousOwner)) {
+    addLog(`☠ ${players[previousOwner].name} ha sido eliminado.`);
+  }
+  if(players[from.owner].isAI) {
+    gainHeroXP(20);
+  }
+}
+
+function checkVictory() {
+  const alive = players.filter(p => !isPlayerEliminated(p.id));
+  if(alive.length === 1 && alive[0].id === CONFIG.PLAYER_ID) {
+    triggerEvent('¡Victoria Total!', 'Has conquistado todo el mundo conocido. ¡Gloria eterna para tu reino!');
+    addLog('🏆 ¡Has ganado la partida!');
+  }
+}
+
+function isPlayerEliminated(playerId) {
+  return territories.every(t => t.owner !== playerId);
+}
+
+// ============= HABILIDADES DEL HÉROE =============
+function useHeroAbility(index) {
+  const ability = playerHero.abilities[index];
+  if(!ability || ability.cooldown > 0) return;
+  const player = players[CONFIG.PLAYER_ID];
+  if(ability.cost > player.money) {
+    addLog('💸 No tienes suficiente oro para usar esta habilidad.');
+    return;
+  }
+  if(!gameState.selected && ability.name !== 'Furia de Batalla' && ability.name !== 'Asalto Rápido') {
+    addLog('⚠ Selecciona primero un territorio propio para usar esta habilidad.');
+    return;
+  }
+  switch(ability.name) {
+    case 'Furia de Batalla':
+      gameState.heroBuffs.attackBonus += 3;
+      addLog('🔥 Tu héroe canaliza Furia de Batalla. ¡Próximo ataque devastador!');
+      break;
+    case 'Grito de Guerra':
+      duplicateTroops(gameState.selected);
+      addLog(`📢 ${gameState.selected.name} recibe refuerzos inspirados por el Grito de Guerra.`);
+      break;
+    case 'Escudo Divino':
+      applyFortify(gameState.selected, CONFIG.FORTIFY_BONUS + 2, true);
+      addLog(`🛡 ${gameState.selected.name} está protegido por un escudo divino.`);
+      break;
+    case 'Asalto Rápido':
+      gameState.heroBuffs.quickStrike = true;
+      addLog('⚡ Preparado Asalto Rápido. El próximo ataque no consumirá movimiento.');
+      break;
+  }
+  player.money -= ability.cost;
+  ability.cooldown = ability.maxCooldown;
+  updateHeroPanel();
+  updateEconomyStats();
+}
+
+function duplicateTroops(territory) {
+  Object.keys(territory.troops).forEach(type => {
+    territory.troops[type] += territory.troops[type];
+  });
+}
+
+function applyFortify(territory, bonus, free=false) {
+  if(!free) {
+    players[CONFIG.PLAYER_ID].money = Math.max(0, players[CONFIG.PLAYER_ID].money - CONFIG.FORTIFY_COST);
+  }
+  gameState.fortifyActive[territory.id] = { turns: 3, bonus };
+  addLog(`🛡 ${territory.name} se fortifica (+${bonus} defensa por 3 turnos).`);
+}
+
+// ============= ECONOMÍA Y TECNOLOGÍA =============
+function collectIncome(playerId) {
+  const owned = territories.filter(t => t.owner === playerId);
+  let income = owned.length * CONFIG.INCOME_PER_TERR;
+  owned.forEach(t => {
+    if(t.building && buildingTypes[t.building]?.income) income += buildingTypes[t.building].income;
+    income += t.economy || 0;
+  });
+  income += players[playerId].tech.economy * 25;
+  players[playerId].money += income;
+  if(playerId === CONFIG.PLAYER_ID) {
+    stats.goldEarned += income;
+  }
+  return income;
+}
+
+function upgradeTechnology() {
+  const player = players[CONFIG.PLAYER_ID];
+  const techLevels = player.tech;
+  const minLevel = Math.min(techLevels.military, techLevels.economy, techLevels.defense);
+  const targetBranch = Object.keys(techLevels).find(key => techLevels[key] === minLevel);
+  const cost = CONFIG.TECH_COST_BASE + techLevels[targetBranch]*150;
+  if(player.money < cost) {
+    addLog(`⚠ Necesitas ${cost}$ para investigar tecnología.`);
+    return;
+  }
+  player.money -= cost;
+  player.tech[targetBranch]++;
+  addLog(`🔬 Tecnología ${targetBranch} mejorada a nivel ${player.tech[targetBranch]}.`);
+  if(targetBranch === 'military') gameState.heroBuffs.attackBonus += 1;
+  if(targetBranch === 'defense') gameState.heroBuffs.defenseBonus += 1;
+  updateEconomyStats();
+  updatePlayersList();
+}
+
+function buildStructure(territoryId, buildingKey) {
+  const territory = territories.find(t => t.id === territoryId);
+  if(!territory || territory.owner !== CONFIG.PLAYER_ID) return;
+  if(territory.building) {
+    addLog('⚠ Ya existe un edificio en este territorio.');
+    return;
+  }
+  const building = buildingTypes[buildingKey];
+  if(!building) return;
+  if(players[CONFIG.PLAYER_ID].money < building.cost) {
+    addLog('⚠ Oro insuficiente para construir.');
+    return;
+  }
+  territory.building = buildingKey;
+  players[CONFIG.PLAYER_ID].money -= building.cost;
+  addLog(`🏗 Construiste ${building.name} en ${territory.name}.`);
+  updateEconomyStats();
+  refreshMarkers();
+}
+
+function demolishStructure(territoryId) {
+  const territory = territories.find(t => t.id === territoryId);
+  if(!territory || territory.owner !== CONFIG.PLAYER_ID || !territory.building) return;
+  addLog(`💥 Demoliste ${buildingTypes[territory.building].name} en ${territory.name}.`);
+  territory.building = null;
+  updateEconomyStats();
+  refreshMarkers();
+}
+
+// ============= GESTIÓN DE TURNOS =============
+function endTurn() {
+  hideModal('action-modal');
+  hideModal('action-qty-modal');
+  gameState.selected = null;
+  gameState.target = null;
+  players.forEach(player => {
+    if(isPlayerEliminated(player.id)) return;
+    const owned = territories.filter(t => t.owner === player.id);
+    owned.forEach(t => t.moved = false);
+  });
+  gameState.current = (gameState.current + 1) % players.length;
+  if(gameState.current === 0) {
+    gameState.turnCount++;
+    stats.totalTurns++;
+    changeWeather();
+    randomEventRoll();
+    reduceFortifications();
+    reduceHeroCooldowns();
+  }
+  proceedTurn();
+}
+
+function proceedTurn() {
+  if(isPlayerEliminated(gameState.current)) {
+    endTurn();
+    return;
+  }
+  const player = players[gameState.current];
+  const income = collectIncome(player.id);
+  if(player.id === CONFIG.PLAYER_ID) {
+    addLog(`💰 Recaudas ${income} de tus territorios.`);
+  } else {
+    addLog(`🤖 ${player.name} obtiene ${income} de oro.`);
+  }
+  if(player.isAI) {
+    runAITurn(player);
+    endTurn();
+  } else {
+    addLog(`➡ Es tu turno (${player.name}).`);
+    updateUI();
+  }
+}
+
+function reduceFortifications() {
+  Object.keys(gameState.fortifyActive).forEach(id => {
+    const state = gameState.fortifyActive[id];
+    if(!state) return;
+    state.turns--;
+    if(state.turns <= 0) delete gameState.fortifyActive[id];
+  });
+}
+
+function reduceHeroCooldowns() {
+  playerHero.abilities.forEach(ability => {
+    if(ability.cooldown > 0) ability.cooldown--;
+  });
+  updateHeroPanel();
+}
+
+// ============= IA SENCILLA =============
+function runAITurn(player) {
+  const owned = territories.filter(t => t.owner === player.id);
+  if(owned.length === 0) return;
+  // Recluta infantería en territorio aleatorio
+  const terr = owned[Math.floor(Math.random()*owned.length)];
+  if(player.money >= troopTypes.infantry.cost) {
+    terr.troops.infantry += 2;
+    player.money -= troopTypes.infantry.cost;
+    addLog(`🤖 ${player.name} refuerza ${terr.name}.`);
+  }
+  // Intentar atacar
+  const targets = terr.neighbors.map(id => territories.find(t => t.id === id)).filter(t => t && t.owner !== player.id && t.owner !== null);
+  if(targets.length && getTotalTroops(terr) > 2) {
+    const target = targets[Math.floor(Math.random()*targets.length)];
+    const attackForce = splitTroops(terr.troops, Math.min(3, getTotalTroops(terr)-1));
+    applyTroopChange(terr.troops, negateTroops(attackForce));
+    resolveBattle(terr, target, attackForce);
+  }
+}
+
+// ============= EVENTOS ALEATORIOS =============
+const randomEvents = [
+  {
+    title: 'Cometa de la Fortuna',
+    description: 'Un cometa ilumina tus tierras. Recibes 200 de oro.',
+    effect: () => { players[CONFIG.PLAYER_ID].money += 200; }
+  },
+  {
+    title: 'Plaga de langostas',
+    description: 'Una plaga devora cosechas en un territorio enemigo al azar.',
+    effect: () => {
+      const enemy = territories.filter(t => t.owner !== CONFIG.PLAYER_ID && t.owner !== null);
+      if(enemy.length === 0) return;
+      const target = enemy[Math.floor(Math.random()*enemy.length)];
+      applyTroopChange(target.troops, { infantry:-1, cavalry:-1, archer:-1, siege:0 });
+    }
+  },
+  {
+    title: 'Festival del Reino',
+    description: 'Tus súbditos celebran y aumenta tu relación diplomática con todos (+10).',
+    effect: () => {
+      players.forEach(p => { if(p.id !== CONFIG.PLAYER_ID) adjustRelation(CONFIG.PLAYER_ID, p.id, 10); });
+    }
+  }
+];
+
+function randomEventRoll() {
+  if(Math.random() < 0.25) {
+    const event = randomEvents[Math.floor(Math.random()*randomEvents.length)];
+    event.effect();
+    triggerEvent(event.title, event.description);
+    updateUI();
+  }
+}
+
+function triggerEvent(title, description) {
+  const modal = document.getElementById('event-notification');
+  document.getElementById('event-title').textContent = title;
+  document.getElementById('event-description').textContent = description;
+  modal.classList.add('show');
+}
+
+function closeEvent() {
+  const modal = document.getElementById('event-notification');
+  modal.classList.remove('show');
+}
+
+// ============= RECLUTAMIENTO =============
+function openRecruitment() {
+  if(!gameState.selected || gameState.selected.owner !== CONFIG.PLAYER_ID) {
+    addLog('⚠ Selecciona un territorio propio para reclutar.');
+    return;
+  }
+  showModal('recruit-modal');
+}
+
+function recruitTroop(type) {
+  const territory = gameState.selected;
+  if(!territory) return;
+  const troop = troopTypes[type];
+  if(!troop) return;
+  if(players[CONFIG.PLAYER_ID].money < troop.cost) {
+    addLog('💸 Oro insuficiente para reclutar.');
+    return;
+  }
+  players[CONFIG.PLAYER_ID].money -= troop.cost;
+  territory.troops[type] += 1;
+  addLog(`🗡 Reclutaste ${troop.name} en ${territory.name}.`);
+  hideModal('recruit-modal');
+  refreshMarkers();
+  updateEconomyStats();
+}
+
+// ============= INTERACCIÓN UI =============
+function togglePanelVisibility(panel, button, showLabel, hideLabel) {
+  if (!panel || !button) return;
+  const isHidden = panel.classList.contains('hidden-panel');
+  if (isHidden) {
+    panel.classList.remove('hidden-panel');
+    button.textContent = hideLabel;
+  } else {
+    panel.classList.add('hidden-panel');
+    button.textContent = showLabel;
+  }
+}
+
+function setupEventListeners() {
+  document.getElementById('btn-action-attack').addEventListener('click', prepareAttack);
+  document.getElementById('btn-action-move').addEventListener('click', prepareMove);
+  document.getElementById('btn-action-cancel').addEventListener('click', cancelAction);
+  document.getElementById('modal-qty-confirm').addEventListener('click', confirmQuantity);
+  document.getElementById('modal-qty-cancel').addEventListener('click', () => hideModal('action-qty-modal'));
+  document.getElementById('battle-close').addEventListener('click', () => hideModal('battle-modal'));
+  document.getElementById('retreat-yes').addEventListener('click', () => hideModal('retreat-modal'));
+  document.getElementById('retreat-no').addEventListener('click', () => hideModal('retreat-modal'));
+  document.getElementById('event-close').addEventListener('click', closeEvent);
+  document.getElementById('btn-recruit').addEventListener('click', openRecruitment);
+  document.getElementById('btn-fortify').addEventListener('click', () => {
+    if(!gameState.selected || gameState.selected.owner !== CONFIG.PLAYER_ID) {
+      addLog('⚠ Selecciona un territorio propio para fortificar.');
+      return;
+    }
+    if(players[CONFIG.PLAYER_ID].money < CONFIG.FORTIFY_COST) {
+      addLog('💸 No tienes suficiente oro.');
+      return;
+    }
+    applyFortify(gameState.selected, CONFIG.FORTIFY_BONUS);
+    updateEconomyStats();
+  });
+  document.getElementById('btn-hero').addEventListener('click', () => {
+    if(!gameState.selected || gameState.selected.owner !== CONFIG.PLAYER_ID) {
+      addLog('⚠ Selecciona un territorio para usar habilidades.');
+      return;
+    }
+    addLog('⭐ Habilidades listas. Haz clic en la que desees activar.');
+  });
+  document.getElementById('btn-pass').addEventListener('click', endTurn);
+  document.getElementById('btn-diplomacy').addEventListener('click', () => {
+    const panel = document.getElementById('diplomacy-panel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  });
+  document.getElementById('btn-tech').addEventListener('click', upgradeTechnology);
+  document.getElementById('btn-toggle-hero').addEventListener('click', () => {
+    togglePanelVisibility(
+      document.getElementById('hero-panel'),
+      document.getElementById('btn-toggle-hero'),
+      '🦸 Mostrar Héroe',
+      '🦸 Ocultar Héroe'
+    );
+  });
+  document.getElementById('btn-toggle-achievements').addEventListener('click', () => {
+    togglePanelVisibility(
+      document.getElementById('achievements'),
+      document.getElementById('btn-toggle-achievements'),
+      '🏆 Mostrar Logros',
+      '🏆 Ocultar Logros'
+    );
+  });
+  document.getElementById('start-game').addEventListener('click', () => {
+    document.getElementById('tutorial').classList.remove('show');
+    startGame();
+  });
+  document.getElementById('recruit-cancel').addEventListener('click', () => hideModal('recruit-modal'));
+  document.getElementById('economy-panel').style.display = 'none';
+  document.querySelectorAll('#recruit-modal button[data-type]').forEach(btn => {
+    btn.addEventListener('click', () => recruitTroop(btn.dataset.type));
+  });
+
+  document.querySelectorAll('#buildings-list').forEach(list => {
+    list.addEventListener('click', e => {
+      const build = e.target.getAttribute('data-build');
+      const territoryId = parseInt(e.target.getAttribute('data-territory'),10);
+      if(build) buildStructure(territoryId, build);
+      const remove = e.target.getAttribute('data-remove');
+      if(remove) demolishStructure(parseInt(remove,10));
+    });
+  });
+
+  document.getElementById('diplomacy-options').addEventListener('click', e => {
+    const influence = e.target.getAttribute('data-influence');
+    if(influence) {
+      const id = parseInt(influence,10);
+      if(players[CONFIG.PLAYER_ID].money < 150) {
+        addLog('⚠ Necesitas 150$ para mejorar relaciones.');
+        return;
+      }
+      players[CONFIG.PLAYER_ID].money -= 150;
+      adjustRelation(CONFIG.PLAYER_ID, id, 15);
+      addLog(`🤝 Mejoraste tu relación con ${players[id].name}.`);
+      updateDiplomacyPanel();
+      updateEconomyStats();
+    }
+  });
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`${btn.dataset.tab}-tab`).classList.add('active');
+      if(btn.dataset.tab === 'economy') document.getElementById('economy-panel').style.display = 'block';
+      else document.getElementById('economy-panel').style.display = 'none';
+    });
+  });
+
+  document.addEventListener('keydown', e => {
+    if(players[gameState.current].isAI) return;
+    if(e.key.toLowerCase() === 'r') openRecruitment();
+    if(e.key.toLowerCase() === 'f') document.getElementById('btn-fortify').click();
+    if(e.key.toLowerCase() === 'h') document.getElementById('btn-hero').click();
+    if(e.code === 'Space') {
+      e.preventDefault();
+      endTurn();
+    }
+  });
+}
+
+function startGame() {
+  changeWeather();
+  renderAchievements();
+  updateHeroPanel();
+  updateUI();
+  proceedTurn();
+  addLog('🎮 ¡La conquista ha comenzado! Selecciona un territorio propio para actuar.');
+}
+
+setupEventListeners();
+updateUI();
+</script>
+</body>
+</html>
